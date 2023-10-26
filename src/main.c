@@ -9,83 +9,1004 @@
 
 #include <genesis.h>
 
+#include "main.h"
 #include "resources.h"
 
-// спрайт Соника
-Sprite* sonicSprite;
-
-// спрайт Pac-Man
-Sprite* pacmanSprite;
-
-// спрайт RED
-Sprite* redSprite;
-
-// спрайт Pac-Girl
-Sprite* pacGirlSprite;
-
-
-// координаты где рисуем спрайт Соника
-s16 sonicX = -95;
-s16 sonicY = 83;
-
-// скорость перемещения Соника
-s16 soincDx = 1;
-
-
-// координаты где рисуем спрайт Pac-Man
-s16 pacmanX = -100;
-s16 pacmanY = 105;
-
-// скорость перемещения Pac-Man
-s16 pacmanDx = 1;
-
-
-// координаты где рисуем спрайт RED
-s16 redX = 400;
-s16 redY = 103;
-
-// скорость перемещения RED
-s16 redDx = 0;
-
-// координаты где рисуем спрайт Pac-Girl
-s16 pacGirlX = -100;
-s16 pacGirlY = 90;
-
-// скорость перемещения Pac-Girl
-s16 pacGirlDx = 0;
-
-
-// Tile которым буду все закрашивать
-const u32 tile[8] = {
-    0x00000000,
-    0x00000000,
-    0x00000000,
-    0x00000000,
-    0x00000000,
-    0x00000000,
-    0x00000000,
-    0x00000000
-};
+/**
+ * NES
+ *
+ *  Перерисовать на бекграунде tile когда съели точку
+ *  рисуем черный квадрат 8x8
+ */
+void drawBlackBox(s16 y, s16 x) {
+	VDP_setTileMapXY(BG_A, 1, x + 4, y);
+}
 
 /**
- * сбрасываем положение спраутов персонажей для отображения заставкии
- * в началоное положение
+ *  Подсчет отчков с учетом всех бонусов
+ */
+void calcScore(void) {
+		score100 = food100;
+		score010 = food010;
+		score001 = food001;
+
+		if (cherryBonus) {
+			score100 += 2;
+		}
+
+		for (i = 0; i < powerBonus; i++) {
+			score001 += 5;
+
+			if (score001 >= 10) {
+				score001 -= 10;
+				++score010;
+			}
+
+			score010 += 2;
+
+			if (score010 >=10) {
+				score010 -= 10;
+				++score100;
+			}
+
+		}
+
+
+		for (i = 0; i < redBonus; i++) {
+			score010 += 5;
+
+			if (score010 >=10) {
+				score010 -= 10;
+				++score100;
+			}
+		}
+}
+
+/**
+ * Клетка по заданным координатам не стена (WALL)
+ * y - координата Y на карте (map[][])
+ * x - координата X на карте (map[][])
+ * return 1 - не стена, 0 - стена
+ */
+int isNotWell(s16 y, s16 x) {
+	if (map[y][x] == PACMAN || map[y][x] == PACGIRL || map[y][x] == RED
+			|| map[y][x] == CHERRY || map[y][x] == FOOD
+			|| map[y][x] == POWER_FOOD || map[y][x] == EMPTY
+			|| map[y][x] == SHADOW) {
+		return 1;
+
+	}
+	return 0;
+}
+
+/**
+ * Клетка по заданным координатам не стена и не дверь (WALL, DOOR)
+ * y - координата Y на карте (map[][])
+ * x - координата X на карте (map[][])
+ * return 1 - не стена и не дверь, 0 - стена или дверь
+ */
+int isNotWellOrDoor(s16 y, s16 x) {
+	if (isNotWell(y, x) && map[y][x] != DOOR) {
+		return 1;
+
+	}
+	return 0;
+}
+
+
+/**
+ * Корректировка координат PACMAN или Призрака
+ * если вышел за поле (появление с другой стороны поля)
+ * x - координата по X на карте (map[][])
+ * y - координата по y на карте (map[][])
+ * значение передаются по ссылке, по этому они меняются
+ */
+void moveBound(s16 *x, s16 *y) {
+	if (*x < 0) {
+		*x = MAP_SIZE_X - 2;
+	} else if (*x > MAP_SIZE_X - 2) {
+		*x = 0;
+	}
+
+	if (*y < 0) {
+		*y = MAP_SIZE_Y - 1;
+	} else if (*y > MAP_SIZE_Y - 1) {
+		*y = 0;
+	}
+}
+
+/**
+ * Открыть двери к вишне и дому призраков
+ */
+void openDoors() {
+	map[doorY][doorX] = EMPTY;
+	map[cherryY][cherryX] = CHERRY;
+
+	cherryFlag = 1;
+	refreshCherry = 1;
+}
+
+/**
+ * Закрыть двери к дому призраков
+ * если вишню не съел PACMAN она появится еще
+ */
+void closeDoors(void) {
+	map[doorY][doorX] = DOOR;
+
+	cherryFlag = 0;
+	refreshDoor = 1;
+	refreshCherry = 0;
+}
+
+/**
+ * Съедена еда
+ * пересчитать значения счетчиков
+ * food001 food010 food100
+ *
+ * т.к. у 8 битной консоли максимальное число 256
+ * то проще считать очки в 3х отдельных переменных
+ * так можно запомнить число от 000 до 999
+ * ну и выводить результат так проще
+ */
+void incFood() {
+	// TODO
+	//sfx_play(0, 0);
+
+	++food001;
+	if (food001 >= 10) {
+		food001 -= 10;
+		++food010;
+	}
+	if (food010 >= 10) {
+		food010 -= 10;
+		++food100;
+	}
+}
+
+/**
+ * Сбрасываем все на начальные настройки по карте:
+ * начальные значения счетчиков циклов
+ * начальное положение персонажей
+ * где будет еда и поверапы
+ */
+void init() {
+	// счетчики циклов начинаются с разных значений
+	// чтоб рендеринг каждого персонажа был в разном глобальном цикле
+	pacmanLastUpdateTime = PACMAN_SPEED;
+	redLastUpdateTime = 4;     //RED_SPEED;
+	pacGirlLastUpdateTime = 6; //PACGIRL_SPEED;
+	cherryTime = CHERRY_TIME
+
+	cherryBonus = 0;
+	powerBonus = 0;
+	redBonus = 0;
+
+	food001 = 1;
+	food010 = 0;
+	food100 = 0;
+
+
+	pacmanX = 15;
+	pacmanY = 17;
+
+	pacGirlX = 15;
+	pacGirlY = 3;
+
+	oldX = 15;
+	oldY = 17;
+
+	dx = 0;
+	dy = 0;
+
+	dxPacGirl = 0;
+	dyPacGirl = 0;
+
+	oldPacGirlX = 15;
+	oldPacGirlY = 3;
+
+	dxRed = 1;
+	dyRed = 0;
+
+	redX = 22;
+	redY = 10;
+
+	oldXRed = 22;
+	oldYRed = 10;
+
+	redFlag = 1;
+
+	redTime = 0;
+
+	cherryFlag = 0;
+	refreshCherry = 0;
+	refreshDoor = 1;
+
+
+	oldRedVal = '.';
+	oldPacGirlVal = '.';
+
+	// расстовляем еду по карте (серые точки)
+	for (i = 0; i < MAP_SIZE_X; i++) {
+		for (j = 0; j < MAP_SIZE_Y; j++) {
+			val = map[j][i];
+			if (val == EMPTY || val == PACGIRL || val == PACMAN || val == RED) {
+				map[j][i] = FOOD;
+			}
+
+		}
+	}
+
+	// расставляем поверапы
+	map[2][1] = POWER_FOOD;
+	map[2][29] = POWER_FOOD;
+	map[17][1] = POWER_FOOD;
+	map[17][29] = POWER_FOOD;
+
+	// Pac-Man на начальную позицию
+	map[pacmanY][pacmanX] = PACMAN;
+
+	// Red на начальную позицию
+	map[redY][redX] = RED;
+
+    // Pac-Girl на начальную позицию
+	map[pacGirlY][pacGirlX] = PACGIRL;
+
+	// дверь в дом призраков
+	// черешня и клетки вокруг
+	// в начальное состояние на карте
+	map[doorY][doorX] = DOOR;
+	map[doorY + 1][doorX] = EMPTY;
+	map[cherryY][cherryX - 2] = EMPTY;
+	map[cherryY][cherryX - 1] = EMPTY;
+	map[cherryY][cherryX] = EMPTY;
+	map[cherryY][cherryX + 1] = EMPTY;
+	map[cherryY][cherryX + 2] = EMPTY;
+}
+
+/**
+ * Проиграл ли PACMAN или он мог съесть призрака
+ * и что съел на месте призрака
+ */
+int pacmanLooser() {
+	// Если RED и PACMAN на одной клетке поля
+	if (redY == pacmanY && redX == pacmanX) {
+		// RED не съедобен
+		if (redFlag) {
+			// Конец игры - PACMAN съеден
+
+			map[pacmanY][pacmanX] = RED;
+
+	        calcScore();
+
+			return 1;
+		} else {
+			// TODO
+			//sfx_play(2, 0);
+
+			// RED съедобен в данный момент
+			// Отправляем его в дом Приведений
+			redY = 10;
+			redX = 15;
+			// бездвиживаем
+			dyRed = 0;
+			dxRed = 0;
+			// закрываем дверь в дом привидений
+			closeDoors();
+
+			// отображаем RED на карте как съедобного
+			map[redY][redX] = RED;
+
+	        redFlag = 1;
+
+	       	// пусть сидит в домике дополнительное время
+	        redTime = RED_TIME;
+
+			// даем бонус за то что RED съели
+			++redBonus;
+
+			// проверяем что пакмен съел вместе с RED
+			if (oldRedVal == FOOD) {
+				// еду
+				incFood();
+			} else if (oldRedVal == POWER_FOOD) {
+				// поверап
+				++powerBonus;
+
+				// TODO
+				// sfx_play(5, 0);
+
+				// обнавляем время когда RED стал съедобным
+				redTime = RED_TIME;
+
+			} else if (oldRedVal == CHERRY) {
+				// вишню
+				++cherryBonus;
+
+				// TODO
+				// sfx_play(3, 0);
+			}
+
+			oldRedVal = EMPTY;
+		}
+	} else if (redY == pacGirlY && redX == pacGirlX) {
+		// проверяем что Pac-Girl съела на месте RED
+		if (oldRedVal == FOOD) {
+			// еду
+			incFood();
+		} else if (oldRedVal == POWER_FOOD) {
+			// поверап
+			++powerBonus;
+
+			// TODO
+			// sfx_play(5, 0);
+
+			// обнавляем время когда RED стал съедобным
+			redTime = RED_TIME;
+
+			// RED становится съедобным
+			redFlag = 0;
+		} else if (oldRedVal == CHERRY) {
+			// вишню
+			++cherryBonus;
+
+			// TODO
+			//sfx_play(3, 0);
+		}
+
+		map[pacGirlY][pacGirlX] = RED;
+
+		oldRedVal = EMPTY;
+	}
+	return 0;
+}
+
+
+/**
+ * Алгоритм обработки движения PACMAN на карте
+ * return 0 - Конец игры
+ *        1 - PACMAN еще жив
+ */
+int pacManState() {
+	// проверяем, у PACMAN задоно ли направление движения
+	if (dx != 0 || dy != 0) {
+
+		// должен ли PACMAN переместиться на новую клетку
+		if (pacmanLastUpdateTime == 0) {
+			pacmanX = pacmanX + dx;
+			pacmanY = pacmanY + dy;
+
+			// сбрасываем счетчик времени
+			pacmanLastUpdateTime = PACMAN_SPEED;
+
+			// корректируем координаты PACMAN если надо (чтоб не вышел с поля)
+			// если вышел за поле (появление с другой стороны поля)
+			moveBound(&pacmanX, &pacmanY);
+
+			// если текущая клетка с едой, увиличиваем счетчик съеденного
+			val = map[pacmanY][pacmanX];
+			if (val == FOOD) {
+				incFood();
+			} else if (val == POWER_FOOD) {
+				// RED становится съедобным
+				redFlag = 0;
+				// бежит в обратную сторону
+				dxRed = -dxRed;
+				dyRed = -dyRed;
+
+				// RED стал съедобным
+				redTime = RED_TIME;
+
+				// и даем еще бонус
+				++powerBonus;
+
+				// TODO
+				//sfx_play(5, 0);
+
+			} else if (val == CHERRY) {
+				++cherryBonus;
+
+				// TODO
+				//sfx_play(3, 0);
+			}
+
+
+			if (isNotWellOrDoor(pacmanY, pacmanX)) {
+				// TODO стираем то что под нами
+				// если в новой клетке не дверь то в старой делаем пустую клетку
+				map[oldY][oldX] = EMPTY;
+				drawBlackBox(oldY, oldX);
+			} else {
+				// если в новой клетке стена WALL или дверь DOOR
+				// остаемся на прошлой клетке
+				pacmanY = oldY;
+				pacmanX = oldX;
+				// вектор движения сбрасываем (PACMAN останавливается)
+				dx = 0;
+				dy = 0;
+			}
+
+			// рисуем пакмена в координатах текущей клетки карты
+			map[pacmanY][pacmanX] = PACMAN;
+
+			// если съеденны все FOOD и POWER_FOOD - PACMAN выиграл
+			if (food100 == 2 && food010 == 7 && food001 == 1 && powerBonus == 4) {
+				// TODO
+				//music_play(1);
+				calcScore();
+				return 0;
+			}
+
+			// сеъеи ли PACMAN привидение (или оно нас)
+			if (pacmanLooser()) {
+				// TODO
+				//music_play(2);
+				return 0;
+			}
+
+			oldX = pacmanX;
+			oldY = pacmanY;
+
+		 }
+
+	}
+	return 1;
+}
+
+/**
+ *  SEGA
+ *
+ *  Нарисовать бонусы, очки
+ *  результат игры (GAME OVER или YOU WINNER)
+ */
+void drawText() {
+	if (STATE_GAME == gameState || STATE_RESULT == gameState) {
+		// идет игра или отображаем результат игры
+
+		// количество съеденых черешень
+		text[0] = cherryBonus + '0';
+		text[1] = 0;
+		VDP_drawText(text, 10, 26);
+
+		// количество съеденных призраков
+		text[0] = redBonus + '0';
+		VDP_drawText(text, 10, 24);
+
+        // количество съеденных поверапов
+		text[0] = powerBonus + '0';
+		VDP_drawText(text, 27, 26);
+
+
+		// количество съеденных серых точек (еды)
+		text[0] = food100 + '0';
+		text[1] = food010 + '0';
+		text[2] = food001 + '0';
+		VDP_drawText(text, 27, 24);
+	}
+	/**
+	if (STATE_RESULT == gameState) {
+		// отображаем результат игры
+		if (food100 == 2 && food010 == 7 && food001 == 1 && powerBonus == 4) {
+			// если победили
+			// пишем YOU WINNER
+			one_vram_buffer('Y', NTADR_A(11,25));
+			one_vram_buffer('O', NTADR_A(12,25));
+			one_vram_buffer('U', NTADR_A(13,25));
+			one_vram_buffer('W', NTADR_A(15,25));
+			one_vram_buffer('I', NTADR_A(16,25));
+			one_vram_buffer('N', NTADR_A(17,25));
+			one_vram_buffer('N', NTADR_A(18,25));
+			one_vram_buffer('E', NTADR_A(19,25));
+			one_vram_buffer('R', NTADR_A(20,25));
+		} else {
+			// если проиграли
+			// пишем GAME OVER
+			one_vram_buffer('G', NTADR_A(11,25));
+			one_vram_buffer('A', NTADR_A(12,25));
+			one_vram_buffer('M', NTADR_A(13,25));
+			one_vram_buffer('E', NTADR_A(14,25));
+			one_vram_buffer('O', NTADR_A(16,25));
+			one_vram_buffer('V', NTADR_A(17,25));
+			one_vram_buffer('E', NTADR_A(18,25));
+			one_vram_buffer('R', NTADR_A(19,25));
+		}
+
+		// пишем SCORE
+		one_vram_buffer('S', NTADR_A(11,27));
+		one_vram_buffer('C', NTADR_A(12,27));
+		one_vram_buffer('O', NTADR_A(13,27));
+		one_vram_buffer('R', NTADR_A(14,27));
+		one_vram_buffer('E', NTADR_A(15,27));
+
+		// отображаем количество полученных очков
+		// с учетом всех бонусов
+		// черешня 200 очков
+		// съеденный призрак 50 очков
+		// поверап 25 очков
+		// серая точка (еда) 1 очко
+		text = score100 + '0';
+		one_vram_buffer(text, NTADR_A(17,27));
+
+		text = score010 + '0';
+		one_vram_buffer(text, NTADR_A(18,27));
+
+		text = score001 + '0';
+		one_vram_buffer(text, NTADR_A(19,27));
+
+
+	}
+	*/
+}
+
+
+/**
+ * SEGA
+ *
+ * Нарисовать спрайты
+ */
+void drawSprites() {
+	if (STATE_SCREENSAVER == gameState) {
+		screensaver();
+	} else if (STATE_SELECT == gameState) {
+		// если находимся на стартовом экране
+		if (players == 1) {
+			// надо спрятать Pac-Girl
+			SPR_setPosition(pacGirlSprite, -100, 90);
+
+			// если выбрана игра за одного (только Pac-Man)
+			// надо нарисовать спрайт PAC-MAN перед 1 PLAYER
+			SPR_setAnim(pacmanSprite, 0);
+			SPR_setHFlip(pacmanSprite, FALSE);
+		    SPR_setPosition(pacmanSprite, 100, 100);
+		} else {
+			// если выбрана игра на 2х игроков (1 игрок за Pac-Man, 2 игрок за Pac-Girl)
+			// нарисовать спрайт PAC-Girl перед 2 PLAYERS
+			SPR_setAnim(pacGirlSprite, 0);
+			SPR_setPosition(pacGirlSprite, 100, 113);
+
+			// нарисовать спрайт PAC-MAN после 2 PLAYERS
+			SPR_setAnim(pacmanSprite, 0);
+			SPR_setHFlip(pacmanSprite, TRUE);
+		    SPR_setPosition(pacmanSprite, 190, 113);
+		}
+	} else if (STATE_GAME == gameState || STATE_RESULT == gameState) {
+		// если идет игра или показываем результаты игры
+		// отрисовываем спрайты игры
+		// PAC-MAN, Pac-Girl, RED или SHADOW, дверь, черешню
+
+		refreshGame();
+	}
+}
+
+/**
+ * SEGA
+ *
+ * Нарисовать только 1 объект с карты
+ * i - строка в массиве карты
+ * j - столбец в массиве карты
+ */
+void draw(s16 i, s16 j) {
+    val = map[i][j] ;
+
+	 // x = i * 8 и на 32 пиксела вправо
+    x = j * 8 + 29;
+
+    // y = j * 8 и на 0 пиксела вверх
+    y = i * 8 - 2;
+
+    if (val == PACMAN) {
+		if (dx < 0) {
+			//oam_meta_spr(x, y, PACMAN_L1);
+			SPR_setAnim(pacmanSprite, 0);
+			SPR_setHFlip(pacmanSprite, TRUE);
+			SPR_setPosition(pacmanSprite, x, y);
+		} else if (dx > 0) {
+			//oam_meta_spr(x, y, PACMAN_R1);
+			SPR_setAnim(pacmanSprite, 0);
+			SPR_setHFlip(pacmanSprite, FALSE);
+			SPR_setPosition(pacmanSprite, x, y);
+		} else if (dy < 0) {
+			//oam_meta_spr(x, y, PACMAN_UP1);
+			SPR_setAnim(pacmanSprite, 1);
+			SPR_setVFlip(pacmanSprite, FALSE);
+			SPR_setPosition(pacmanSprite, x, y);
+		} else if (dy > 0) {
+			//oam_meta_spr(x, y, PACMAN_D1);
+			SPR_setAnim(pacmanSprite, 1);
+			SPR_setVFlip(pacmanSprite, TRUE);
+			SPR_setPosition(pacmanSprite, x, y);
+		} else {
+			//oam_meta_spr(x, y, PACMAN_0);
+			SPR_setAnim(pacmanSprite, 2);
+			SPR_setPosition(pacmanSprite, x, y);
+		}
+    } /**
+    else if (val == RED) {
+        if (redSprite == 1) {
+        	if (redLastUpdateTime == 0) {
+            	redSprite = 2;
+            }
+
+            if (dxRed < 0) {
+            	//oam_meta_spr(x, y, RED_L1);
+            } else if (dxRed > 0) {
+            	//oam_meta_spr(x, y, RED_R1);
+            } else if (dyRed > 0) {
+            	//oam_meta_spr(x, y, RED_D1);
+            } else {
+            	//oam_meta_spr(x, y, RED_UP1);
+            }
+        } else {
+        	if (redLastUpdateTime == 0) {
+            	redSprite = 1;
+            }
+
+            if (dxRed < 0) {
+            	//oam_meta_spr(x, y, RED_L2);
+            } else if (dxRed > 0) {
+            	//oam_meta_spr(x, y, RED_R2);
+            } else if (dyRed > 0) {
+            	//oam_meta_spr(x, y, RED_D2);
+            } else {
+            	//oam_meta_spr(x, y, RED_UP2);
+            }
+        }
+    } else if (val == PACGIRL) {
+        if (pacGirlSprite == 1) {
+        	if (pacGirlLastUpdateTime == 0) {
+        		pacGirlSprite = 2;
+        	}
+
+            if (dxPacGirl < 0) {
+            	//oam_meta_spr(x, y, PACGIRL_L1);
+            } else if (dxPacGirl > 0) {
+            	//oam_meta_spr(x, y, PACGIRL_R1);
+            } else if (dyPacGirl < 0) {
+            	//oam_meta_spr(x, y, PACGIRL_UP1);
+            } else if (dyPacGirl > 0) {
+            	//oam_meta_spr(x, y, PACGIRL_D1);
+            } else {
+            	//oam_meta_spr(x, y, PACGIRL_0);
+            }
+        } else if (pacGirlSprite == 2) {
+        	if (pacGirlLastUpdateTime == 0) {
+        		pacGirlSprite = 3;
+        	}
+
+            if (dxPacGirl < 0) {
+            	//oam_meta_spr(x, y, PACGIRL_L2);
+            } else if (dxPacGirl > 0) {
+            	//oam_meta_spr(x, y, PACGIRL_R2);
+            } else if (dyPacGirl < 0) {
+            	//oam_meta_spr(x, y, PACGIRL_UP2);
+            } else if (dyPacGirl > 0) {
+            	//oam_meta_spr(x, y, PACGIRL_D2);
+            } else {
+            	//oam_meta_spr(x, y, PACGIRL_0);
+            }
+        } else if (pacGirlSprite == 3) {
+        	if (pacGirlLastUpdateTime == 0) {
+        		pacGirlSprite = 1;
+        	}
+
+			if (dxPacGirl != 0) {
+				//oam_meta_spr(x, y, PACGIRL_1);
+			} else {
+				//oam_meta_spr(x, y, PACGIRL_0);
+			}
+        }
+    } else if (val == SHADOW) {
+        if (redSprite == 1) {
+        	if (redLastUpdateTime == 0) {
+            	redSprite = 2;
+            	// TODO
+            	//sfx_play(6, 0);
+            }
+            //oam_meta_spr(x, y, SPIRIT1);
+        } else {
+        	if (redLastUpdateTime == 0) {
+            	redSprite = 1;
+            	// TODO
+            	//sfx_play(8, 0);
+            }
+            //oam_meta_spr(x, y, SPIRIT2);
+        }
+    } else if (val == CHERRY) {
+    	//oam_meta_spr(x, y, CHERRY_SPR);
+    } else if (val == DOOR) {
+    	//oam_meta_spr(x, y + 8, DOOR_SPR);
+    }
+    */
+}
+
+/**
+ * SEGA
+ *
+ * Обновить карту / персонажей, двери, черешню
+ */
+void refreshGame() {
+	if (!cherryFlag && redTime == 0 && !cherryBonus && cherryTime == 0) {
+		// открыть двери
+		openDoors();
+	}
+
+    if (refreshDoor) {
+		if (map[doorY][doorX] != DOOR) {
+			refreshDoor = 0;
+		} else {
+			// рисуем дверь
+			draw(doorY, doorX);
+		}
+    }
+
+    if (refreshCherry) {
+		if (map[cherryY][cherryX] != CHERRY) {
+			refreshCherry = 0;
+		} else {
+		    // рисуем черешню
+	    	draw(cherryY, cherryX);
+		}
+    }
+
+    // рисуем призрака RED
+   	draw(redY, redX);
+
+
+    // рисуем Pac-Man
+	draw(pacmanY, pacmanX);
+
+
+    // рисуем Pac-Girl
+	draw(pacGirlY, pacGirlX);
+}
+
+/**
+ * SEGA
+ *
+ * Нарисовать задний фон
+ */
+void drawBackground() {
+	if (STATE_SCREENSAVER == gameState) {
+		// заставка
+	    // рисуем задний фон (лого SEGA из sega.png)
+	    VDP_drawImage(BG_A, &sega_image, 0, 0);
+	} else if (STATE_SELECT == gameState) {
+		// стартовый бекграунд
+	    // рисуем в качестве заднего фона меню выбора количества игроков
+	    VDP_drawImage(BG_A, &menu_image, 0, 0);
+	} else {
+		// карта уровня с лабиринтом
+	    // рисуем в качестве заднего фона карту уровня
+	    VDP_drawImage(BG_A, &map_image, 0, 0);
+	}
+}
+
+/**
+ *  SEGA
+ *
+ *  Обработка нажатых кнопок игроком
+ *  передвижение персонажей во время игры
+ */
+void actions() {
+	if (STATE_SCREENSAVER == gameState) {
+        // условие окончания анимации заставки
+        // тупо закончилась анимация: Pac-Girl X координата >= 380
+        // или нажали любую кнопку на одном из Джойстиков (кроме Start)
+        if ((pacGirlX >= 380)
+        		 || (pad1 & BUTTON_A || pad1 & BUTTON_B || pad1 & BUTTON_C || pad1 & BUTTON_X || pad1 & BUTTON_Y || pad1 & BUTTON_Z)
+				 || (pad2 & BUTTON_A || pad2 & BUTTON_B || pad2 & BUTTON_C || pad2 & BUTTON_X || pad2 & BUTTON_Y || pad2 & BUTTON_Z)
+		    ) {
+
+     	   // нужно всех персонажей убрать с экрана
+           // для этого ставим их в начальное состояние перед запуском заставки
+     	   initScreensaver();
+
+     	   // выбор количества игроков для игры
+		   gameState = STATE_SELECT;
+
+		   // рисуем задний фон с меню выбора игроков
+		   drawBackground();
+        }
+	} else if (STATE_SELECT == gameState) {
+		// стартовый экран (выбор количества игроков)
+		if (((pad1 & BUTTON_START) || (pad2 & BUTTON_START)) && playersTime == 0) {
+			// нажат Start на 1 или 2 джойстике
+			// TODO
+			// music_stop();
+
+			// сбросить игру в стартовое состояние
+			// начальное положение персонажей, обнулить очки, и т.д.
+			init();
+
+			if (players == 1) {
+				// выбрана игра за 1го (1 PLAYER)
+
+				// игрок 1 убираем с карты PAC-GIRL
+				map[pacGirlY][pacGirlX] = FOOD;
+			} else {
+				// выбрана игра на 2их (2 PLAYERS)
+
+				// надо дать очки за точку
+				// которая на месте PAC-GIRL была
+				incFood();
+			}
+
+			// начинаем иру
+			gameState = STATE_GAME;
+
+			// рисуем задний фон с лабиринтом для игры
+			drawBackground();
+
+			return;
+		}
+
+
+		// 1 или 2 игрока будут играть - выбор стрелочками
+		if (((pad1 & BUTTON_DOWN) || (pad2 & BUTTON_DOWN)) && (players == 1)) {
+			// Нажата кнопка вверх на 1 или 2 джойстике
+			players = 2;
+			return;
+		}
+
+
+		if (((pad1 & BUTTON_UP) || (pad2 & BUTTON_UP)) && (players == 2)) {
+			// Нажата кнопка вниз на 1 или 2 джойстике
+			players = 1;
+			return;
+		}
+
+		// задержка для обработки нажатия SELECT
+		if (playersTime > 0) {
+			// защита от двойного нажатия,
+			// когда playersTime станет равным 0 обработчик заработает  опять
+			--playersTime;
+		}
+	} else if (STATE_GAME == gameState) {
+		// идет ира
+
+		if (pad1 &  BUTTON_LEFT) {
+			// нажата кнопка влеао на 1 джойстике
+			dx = -1;
+			dy = 0;
+		}
+
+		if (pad1 & BUTTON_RIGHT) {
+			// нажата кнопка вправо на 1 джойстике
+			dx = 1;
+			dy = 0;
+
+		}
+
+		if (pad1 & BUTTON_UP) {
+			// нажата кнопка вверх на 1 джойстике
+			dy = -1;
+			dx = 0;
+		}
+
+		if (pad1 & BUTTON_DOWN) {
+			// нажата кнопка вниз на 1 джойстике
+			dy = 1;
+			dx = 0;
+		}
+
+		if (pad2 & BUTTON_UP) {
+			// нажата кнопка вверх на 2 джойстике
+			dyPacGirl = -1;
+			dxPacGirl = 0;
+		}
+
+		if (pad2 & BUTTON_DOWN) {
+			// нажата кнопка вниз на 2 джойстике
+			dyPacGirl = 1;
+			dxPacGirl = 0;
+		}
+
+		if (pad2 & BUTTON_LEFT) {
+			// нажата кнопка влево на 2 джойстике
+			dxPacGirl = -1;
+			dyPacGirl = 0;
+		}
+
+		if (pad2 & BUTTON_RIGHT) {
+			// нажата кнопка вправо на 2 джойстике
+			dxPacGirl = 1;
+			dyPacGirl = 0;
+		}
+
+
+		// двигаем Pac-Man
+		if (!pacManState()) {
+			// игра окончена
+			gameState = STATE_RESULT;
+			return;
+		}
+
+		/** TODO
+		// двигаем RED
+		if (!redState()) {
+			// игра окончена
+			gameState = STATE_RESULT;
+			return;
+		}
+
+
+		// двигаем Pac-Girl
+		if (!pacGirlState()) {
+			// игра окончена
+			gameState = STATE_RESULT;
+			return;
+		}
+		*/
+
+		if (pacmanLastUpdateTime > 0 ) {
+			// счетчик для анимации Pac-Man
+			--pacmanLastUpdateTime;
+		}
+
+		if (redLastUpdateTime > 0) {
+			// счетчик для анимации RED и SHADOW
+			--redLastUpdateTime;
+		}
+
+		if (pacGirlLastUpdateTime > 0) {
+			// счетчик для анимации Pac-Girl
+			--pacGirlLastUpdateTime;
+		}
+
+		if (cherryTime > 0) {
+			// счетчик когда надо показать черешню
+			// и отрыть к ней дверь
+			--cherryTime;
+		}
+
+		if (redTime > 0) {
+			// счетчик когда SHADOW вновь станет RED
+			--redTime;
+		}
+	} else if (STATE_RESULT == gameState && ((pad1 & BUTTON_START) || (pad2 & BUTTON_START))) {
+		if (food100 == 2 && food010 == 7 && food001 == 1 && powerBonus == 4) {
+			// TODO
+			// music_play(3);
+		}
+		// показываем результат игры  и на этом экране
+		// нажат Start на 1 или 2 джойстике
+
+		// переходим на стартовый экран выбора игроков
+		gameState = STATE_SCREENSAVER;
+
+		// защита от 2го нажатия кнопки Start
+		playersTime = 30;
+
+		// нарисовать стартовый экран выбора игроков
+		drawBackground();
+
+		// нужно всех персонажей убрать с экрана
+		// для этого ставим их в начальное состояние перед запуском заставки
+		initScreensaver();
+	}
+
+	return;
+
+}
+
+
+/**
+ * сбрасываем значения переменных для отображения заставкии
+ * и отрисовываем их в новых местах
  */
 void initScreensaver() {
     sonicX = -95;
     sonicY = 83;
-    soincDx = 1;
+    dxSonic = 1;
     pacmanX = -100;
     pacmanY = 105;
-    pacmanDx = 1;
+    dx = 1;
     redX = 400;
     redY = 103;
-    redDx = 0;
+    dxRed = 0;
     pacGirlX = -100;
     pacGirlY = 90;
-    pacGirlDx = 0;
+    dxPacGirl = 0;
 
-    // TODO а надоли то что ниже
     SPR_setAnim(pacmanSprite, 0);
     SPR_setAnim(redSprite, 0);
     SPR_setAnim(pacGirlSprite, 0);
@@ -105,150 +1026,103 @@ void initScreensaver() {
     // изменяем позицию спрайта Pac-Girl
     SPR_setPosition(pacGirlSprite, pacGirlX, pacGirlY);
 
-    // Обновляет и отображает спрайты на экране
-    SPR_update();
-
-    //  делает всю закулисную обработку, нужен когда есть спрайты, музыка, джойстик.
-    SYS_doVBlankProcess();
-
 }
 
 /**
  * отображаем заставку
- * return - 1 всегда после отрисовки заставки
+ * SEGA которую съест Pac-Man и Pac-Girl
  */
-int screensaver() {
-	// что нажато на контроллере 1
-	u16 joy1 = 0;
+void screensaver() {
+   SPR_setAnim(pacmanSprite, 0);
+   SPR_setAnim(redSprite, 0);
+   SPR_setAnim(pacGirlSprite, 0);
 
-	// что нажато на контроллере 2
-	u16 joy2 = 0;
+   // отоброзить по горизонтали спрайт RED
+   SPR_setHFlip(redSprite, TRUE);
 
-	initScreensaver();
+   if (dx < 0) {
+	   SPR_setHFlip(pacmanSprite, TRUE);
+   } else {
+	   SPR_setHFlip(pacmanSprite, FALSE);
+   }
 
-    // рисуем задний фон (лого SEGA из sega.png)
-    VDP_drawImage(BG_A, &sega_image, 0, 0);
+   // задаем какую анимацию использовать
+   if (sonicX <= 30)  {
+	   // соник идет - 2 строчка анимации в файле sonic.png если считать с 0
+	   SPR_setAnim(sonicSprite, 2);
+   } else if (sonicX <= 50)  {
+	   dxSonic = 2;
+	   // соник идет - 2 строчка анимации в файле sonic.png если считать с 0
+	   SPR_setAnim(sonicSprite, 2);
+   } else if (sonicX <= 70) {
+	   dxSonic = 3;
+	   // соник идет - 2 строчка анимации в файле sonic.png если считать с 0
+	   SPR_setAnim(sonicSprite, 2);
+   } else if (sonicX <= 120) {
+	   dxSonic = 5;
+	   // соник бежит - 3 строчка анимации в файле sonic.png
+	   SPR_setAnim(sonicSprite, 3);
+   } else {
+	   dxSonic = 6;
+	   // появляется RED
+	   dxRed = -1;
+	   dxPacGirl = 1;
+	   // соник бежит - 3 строчка анимации в файле sonic.png
+	   SPR_setAnim(sonicSprite, 3);
+   }
 
-    while(1) {
-           SPR_setAnim(pacmanSprite, 0);
-           SPR_setAnim(redSprite, 0);
-           SPR_setAnim(pacGirlSprite, 0);
+   if (sonicX < 320) {
+	   // вычисляем новые координаты нахождения Соника
+	   sonicX += dxSonic;
+   }
 
-           // отоброзить по горизонтали спрайт RED
-           SPR_setHFlip(redSprite, TRUE);
+   if (pacmanX < 210) {
+	   // вычисляем новые координаты нахождения Pac-Man
+	   pacmanX += dx;
+   } else {
+	   // пора убегать от RED
+	   dx = -1;
+	   pacmanX = 209;
+   }
 
-           if (pacmanDx < 0) {
-               SPR_setHFlip(pacmanSprite, TRUE);
-           } else {
-               SPR_setHFlip(pacmanSprite, FALSE);
-           }
+   if (redX > -16) {
+	   // вычисляем новые координаты нахождения RED
+	   redX += dxRed;
+   }
 
-           // задаем какую анимацию использовать
-           if (sonicX <= 30)  {
-               // соник идет - 2 строчка анимации в файле sonic.png если считать с 0
-               SPR_setAnim(sonicSprite, 2);
-           } else if (sonicX <= 50)  {
-               soincDx = 2;
-               // соник идет - 2 строчка анимации в файле sonic.png если считать с 0
-               SPR_setAnim(sonicSprite, 2);
-           } else if (sonicX <= 70) {
-               soincDx = 3;
-               // соник идет - 2 строчка анимации в файле sonic.png если считать с 0
-               SPR_setAnim(sonicSprite, 2);
-           } else if (sonicX <= 120) {
-               soincDx = 5;
-               // соник бежит - 3 строчка анимации в файле sonic.png
-               SPR_setAnim(sonicSprite, 3);
-           } else {
-               soincDx = 6;
-               // появляется RED
-               redDx = -1;
-               pacGirlDx = 1;
-               // соник бежит - 3 строчка анимации в файле sonic.png
-               SPR_setAnim(sonicSprite, 3);
-           }
-
-           // Обновляет и отображает спрайты на экране
-           SPR_update();
-
-           //  делает всю закулисную обработку, нужен когда есть спрайты, музыка, джойстик.
-           SYS_doVBlankProcess();
-
-           if (sonicX < 320) {
-               // вычисляем новые координаты нахождения Соника
-               sonicX += soincDx;
-           }
-
-           if (pacmanX < 210) {
-               // вычисляем новые координаты нахождения Pac-Man
-               pacmanX += pacmanDx;
-           } else {
-               // пора убегать от RED
-               pacmanDx = -1;
-               pacmanX = 209;
-           }
-
-           if (redX > -16) {
-               // вычисляем новые координаты нахождения RED
-               redX += redDx;
-           }
-
-           pacGirlX+= pacGirlDx;
+   pacGirlX+= dxPacGirl;
 
 
-           // изменяем позицию спрайта Соника
-           SPR_setPosition(sonicSprite, sonicX, sonicY);
+   // изменяем позицию спрайта Соника
+   SPR_setPosition(sonicSprite, sonicX, sonicY);
 
-           // изменяем позицию спрайта Pac-Man
-           SPR_setPosition(pacmanSprite, pacmanX, pacmanY);
+   // изменяем позицию спрайта Pac-Man
+   SPR_setPosition(pacmanSprite, pacmanX, pacmanY);
 
-           // изменяем позицию спрайта RED
-           SPR_setPosition(redSprite, redX, redY);
+   // изменяем позицию спрайта RED
+   SPR_setPosition(redSprite, redX, redY);
 
-           // изменяем позицию спрайта Pac-Girl
-           SPR_setPosition(pacGirlSprite, pacGirlX, pacGirlY);
+   // изменяем позицию спрайта Pac-Girl
+   SPR_setPosition(pacGirlSprite, pacGirlX, pacGirlY);
 
 
-           // стираем на фоне то что съел Pac-Man
-           if (pacmanX >=0 && pacmanX <= 320) {
-               // рисуем tile на бакграунде в координатах Pac-Man (он съест SEGA)
-               VDP_setTileMapXY(BG_A, 1, (pacmanX/8), (pacmanY/8));
-               VDP_setTileMapXY(BG_A, 1, (pacmanX/8), (pacmanY/8) + 1);
-           }
+   // стираем на фоне то что съел Pac-Man
+   if (pacmanX >=0 && pacmanX <= 320) {
+	   // рисуем tile на бакграунде в координатах Pac-Man (он съест SEGA)
+	   VDP_setTileMapXY(BG_A, 1, (pacmanX/8), (pacmanY/8));
+	   VDP_setTileMapXY(BG_A, 1, (pacmanX/8), (pacmanY/8) + 1);
+   }
 
-           if (pacGirlX >= 0 && pacGirlX <= 320) {
-               // рисуем tile на бакграунде в координатах Pac-Girl (он съест SEGA)
-               VDP_setTileMapXY(BG_A, 1, (pacGirlX/8), (pacGirlY/8));
-               VDP_setTileMapXY(BG_A, 1, (pacGirlX/8), (pacGirlY/8) + 1);
-           }
+   if (pacGirlX >= 0 && pacGirlX <= 320) {
+	   // рисуем tile на бакграунде в координатах Pac-Girl (он съест SEGA)
+	   VDP_setTileMapXY(BG_A, 1, (pacGirlX/8), (pacGirlY/8));
+	   VDP_setTileMapXY(BG_A, 1, (pacGirlX/8), (pacGirlY/8) + 1);
+   }
 
-           // что нажато на 1 джойстике
-           joy1 = JOY_readJoypad(JOY_1);
-
-           // что нажато на 2 джойстике
-           joy2 = JOY_readJoypad(JOY_2);
-
-           // условие окончания анимации заставки
-           // тупо закончилась анимация
-           // нажать любую кнопку на одном из Джойстиков (кроме Start)
-           if ((pacGirlX >= 380)
-        		 || (joy1 & BUTTON_A || joy1 & BUTTON_B || joy1 & BUTTON_C || joy1 & BUTTON_X || joy1 & BUTTON_Y || joy1 & BUTTON_Z)
-				 || (joy2 & BUTTON_A || joy2 & BUTTON_B || joy2 & BUTTON_C || joy2 & BUTTON_X || joy2 & BUTTON_Y || joy2 & BUTTON_Z)
-			   ) {
-        	   // нужно всех персонажей убрать с экрана
-        	   initScreensaver();
-        	   return 1;
-           }
-
-       }
-    return 1;
 }
 
 // точка входа в программу
 int main() {
-    // рисуем задний фон (лого SEGA из sega.png)
-    //VDP_drawImage(BG_A, &img, 0, 0);
-
     // загружаем в tile из VDP 
     VDP_loadTileData(tile, 2, 1, 0);
     // инициализируем спрайтовый движок (выделяем место в VRAM под спрайты)
@@ -298,47 +1172,35 @@ int main() {
                                               )
                                 );
 
+    // инициализируем положение персонажей для заставки
+    initScreensaver();
 
-    // заставка SEGA которую съест Pac-Man и Pac-Girl
-    screensaver();
+    // рисуем в качестве заднего фона SEGA
+    drawBackground();
 
-    // рисуем в качестве заднего фона меню выбора количества игроков
-    VDP_drawImage(BG_A, &menu_image, 0, 0);
-
-	// что нажато на контроллере 1
-	u16 joy1 = 0;
-
-	// что нажато на контроллере 2
-	u16 joy2 = 0;
-
+    // цикл анимации игры
     while(1) {
     	// что нажато на 1 джойстике
-        joy1 = JOY_readJoypad(JOY_1);
+    	pad1 = JOY_readJoypad(JOY_1);
 
         // что нажато на 2 джойстике
-        joy2 = JOY_readJoypad(JOY_2);
+    	pad2 = JOY_readJoypad(JOY_2);
+
+		// нарисовать бонусы, очки или результат игры
+		drawText();
+
+		// обработать действия игроков (нажатие кнопок контроллеров)
+		// подвинуть персонажи в зависимости от того что нажато на крате (map)
+		actions();
+
+		// нарисовать спрайты согласно расположению на карте (map)
+		drawSprites();
 
         // Обновляет и отображает спрайты на экране
         SPR_update();
 
         //  делает всю закулисную обработку, нужен когда есть спрайты, музыка, джойстик.
         SYS_doVBlankProcess();
-
-        // условие окончания выбора в меню
-        // нажат start на одном из Джойстиков
-        if ((joy1 & BUTTON_START)
-				 || (joy2 & BUTTON_START)
-			   ) {
-     	   break;
-        }
-    }
-    
-    // рисуем в качестве заднего фона карту уровня
-    VDP_drawImage(BG_A, &map_image, 0, 0);
-
-    // цикл анимации игры
-    while(1) {
-
     }
 
     return (0);
