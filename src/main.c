@@ -25,7 +25,7 @@ void drawBlackBox(s16 y, s16 x) {
 /**
  *  Подсчет отчков с учетом всех бонусов
  */
-void calcScore(void) {
+void calcScore() {
 		score100 = food100;
 		score010 = food010;
 		score001 = food001;
@@ -229,7 +229,7 @@ void init() {
 	for (i = 0; i < MAP_SIZE_X; i++) {
 		for (j = 0; j < MAP_SIZE_Y; j++) {
 			val = map[j][i];
-			if (val == EMPTY || val == PACGIRL || val == PACMAN || val == RED) {
+			if (val == EMPTY || val == PACGIRL || val == PACMAN || val == RED || val == SHADOW) {
 				map[j][i] = FOOD;
 			}
 
@@ -276,6 +276,13 @@ int pacmanLooser() {
 
 			map[pacmanY][pacmanX] = RED;
 
+			// убрать спрайт Pac-Man с экрана
+			SPR_setPosition(pacmanSprite, -90, 90);
+
+			// обездвижить Pac-Girl
+			dxPacGirl = 0;
+			dyPacGirl = 0;
+
 	        calcScore();
 
 			return 1;
@@ -293,10 +300,14 @@ int pacmanLooser() {
 			// закрываем дверь в дом привидений
 			closeDoors();
 
+	    	// скрыть черешню
+	    	SPR_setPosition(cherrySprite, -90, 100);
+
 			// отображаем RED на карте как съедобного
 			map[redY][redX] = RED;
 
 	        redFlag = 1;
+
 
 	       	// пусть сидит в домике дополнительное время
 	        redTime = RED_TIME;
@@ -322,6 +333,8 @@ int pacmanLooser() {
 				// вишню
 				++cherryBonus;
 
+				// скрыть черешню
+				SPR_setPosition(cherrySprite, -90, 100);
 				// TODO
 				// sfx_play(3, 0);
 			}
@@ -348,6 +361,10 @@ int pacmanLooser() {
 		} else if (oldRedVal == CHERRY) {
 			// вишню
 			++cherryBonus;
+
+			// скрыть черешню
+			SPR_setPosition(cherrySprite, -90, 100);
+
 
 			// TODO
 			//sfx_play(3, 0);
@@ -405,6 +422,9 @@ int pacManState() {
 			} else if (val == CHERRY) {
 				++cherryBonus;
 
+				// скрыть черешню
+				SPR_setPosition(cherrySprite, -90, 100);
+
 				// TODO
 				//sfx_play(3, 0);
 			}
@@ -432,6 +452,12 @@ int pacManState() {
 			if (food100 == 2 && food010 == 7 && food001 == 1 && powerBonus == 4) {
 				// TODO
 				//music_play(1);
+
+				dxPacGirl = 0;
+				dyPacGirl = 0;
+				dx = 0;
+				dy = 0;
+
 				calcScore();
 				return 0;
 			}
@@ -453,6 +479,266 @@ int pacManState() {
 }
 
 /**
+ * Алгоритм обработки движения PACGIRL на карте
+ * return 0 - Конец игры
+ *        1 - PACMAN еще жив
+ */
+int pacGirlState() {
+	// проверяем, у pacGirl задоно ли направление движения
+	if (dxPacGirl != 0 || dyPacGirl != 0) {
+
+		// если подключился 2 игрок
+		if (players == 1) {
+			players = 2;
+			if (map[pacGirlY][pacGirlX] == FOOD) {
+				incFood();
+			}
+		}
+
+		if (pacGirlLastUpdateTime == 0) {
+			pacGirlX = pacGirlX + dxPacGirl;
+			pacGirlY = pacGirlY + dyPacGirl;
+
+			pacGirlLastUpdateTime = PACGIRL_SPEED;
+
+			// если вышел за поле (появление с другой стороны поля)
+			moveBound(&pacGirlX, &pacGirlY);
+
+
+			// если текущая клетка с едой, увиличиваем счетчик съеденного
+			val = map[pacGirlY][pacGirlX];
+			if (val == FOOD) {
+				incFood();
+			} else if (val == POWER_FOOD) {
+				// RED становится съедобным
+				redFlag = 0;
+				// бежит в обратную сторону
+				dxRed = -dxRed;
+				dyRed = -dyRed;
+
+
+				// RED стал съедобным
+				redTime = RED_TIME;
+
+				// и даем еще бонус
+				++powerBonus;
+				// TODO
+				//sfx_play(5, 0);
+			} else if (val == CHERRY) {
+				++cherryBonus;
+
+				// скрыть черешню
+				SPR_setPosition(cherrySprite, -90, 100);
+
+				// TODO
+				//sfx_play(3, 0);
+			}
+
+			if (isNotWellOrDoor(pacGirlY, pacGirlX)) {
+				// если в новой клетке не дверь то в старой делаем пустую клетку
+				oldPacGirlVal = val;
+				map[oldPacGirlY][oldPacGirlX] = EMPTY;
+				drawBlackBox(oldPacGirlY, oldPacGirlX);
+			} else {
+				// если в новой клетке стена WALL или дверь DOOR
+				// остаемся на прошлой клетке
+				pacGirlY = oldPacGirlY;
+				pacGirlX = oldPacGirlX;
+				// вектор движения сбрасываем (PACMAN останавливается)
+				dxPacGirl = 0;
+				dyPacGirl = 0;
+			}
+
+			// рисуем PAC-GIRL в координатах текущей клетки карты
+			map[pacGirlY][pacGirlX] = PACGIRL;
+
+			// если съеденны все FOOD и POWER_FOOD - PACMAN выиграл
+			if (food100 == 2 && food010 == 7 && food001 == 1 && powerBonus == 4) {
+				// TODO
+				//music_play(1);
+
+				dxPacGirl = 0;
+				dyPacGirl = 0;
+				dx = 0;
+				dy = 0;
+
+				calcScore();
+				return 0;
+			}
+
+			// сеъеи ли PACMAN привидение (или оно нас)
+			if (pacmanLooser()) {
+				// TODO
+				//music_play(2);
+				return 0;
+			}
+
+
+			oldPacGirlX = pacGirlX;
+			oldPacGirlY = pacGirlY;
+		}
+	}
+
+	return 1;
+}
+
+
+/**
+ * Алгоритм призрака гоняющегося за PACMAN
+ * return 0 - Конец игры
+ *        1 - PACMAN еще жив
+ */
+int redState() {
+
+	// надо ли RED перейти в режим погони
+	if (redTime == 0 ) {
+		redFlag = 1;
+		// если не двигается, пусть идет вверх
+		if (dyRed == 0 && dxRed == 0) {
+			dyRed = -1;
+		}
+	} else if (redLastUpdateTime == 0 && dyRed == 0 && dxRed == 0){
+		redLastUpdateTime = RED_SPEED;
+	}
+
+	// проверяем, у RED задоно ли направление движения
+	if (dxRed != 0 || dyRed != 0) {
+		if (redLastUpdateTime == 0) {
+			redX = redX + dxRed;
+			redY = redY + dyRed;
+
+			redLastUpdateTime = RED_SPEED;
+
+			// вышли за границы
+			moveBound(&redX, &redY);
+
+			if (isNotWell(redY, redX)) {
+				map[oldYRed][oldXRed] = oldRedVal;
+				oldRedVal = map[redY][redX];
+
+				if (redX == 15 && redY >= 7 && redY <= 10) {
+					dyRed = -1;
+					dxRed = 0;
+				} else if (dxRed != 0) {
+					if (redFlag && redY != pacmanY) {
+						if (isNotWellOrDoor(redY + 1, redX)
+								&& isNotWellOrDoor(redY - 1, redX)) {
+							if (abs(redY + 1 - pacmanY) < abs(redY - 1 - pacmanY)) {
+								dyRed = 1;
+							} else {
+								dyRed = -1;
+							}
+						} else if (isNotWellOrDoor(redY + 1, redX)) {
+							if (abs(redY + 1 - pacmanY) < abs(redY - pacmanY)) {
+								dyRed = 1;
+							}
+						} else if (isNotWellOrDoor(redY - 1, redX)) {
+							if (abs(redY - 1 - pacmanY) < abs(redY - pacmanY)) {
+								dyRed = -1;
+							}
+						}
+					} else {
+						if (isNotWellOrDoor(redY + 1, redX)) {
+							dyRed = random() % 2;
+						}
+
+						if (isNotWellOrDoor(redY - 1, redX)) {
+							dyRed = -1 * (random() % 2);
+						}
+					}
+
+					if (dyRed != 0) {
+						dxRed = 0;
+					}
+
+				} else if (dyRed != 0) {
+					if (redFlag && redX != pacmanX) {
+						if (isNotWellOrDoor(redY, redX + 1)
+								&& isNotWellOrDoor(redY, redX - 1)) {
+							if (abs(redX + 1 - pacmanX) < abs(redX - 1 - pacmanX)) {
+								dxRed = 1;
+							} else {
+								dxRed = -1;
+							}
+						} else if (isNotWellOrDoor(redY, redX + 1)) {
+							if (abs(redX + 1 - pacmanX) < abs(redX - pacmanX)) {
+								dxRed = 1;
+							}
+						} else if (isNotWellOrDoor(redY - 1, redX)) {
+							if (abs(redX - 1 - pacmanX) < abs(redX - pacmanX)) {
+								dxRed = -1;
+							}
+
+						}
+					} else {
+
+						if (isNotWellOrDoor(redY, redX + 1)) {
+							dxRed = random() % 2;
+						}
+
+						if (isNotWellOrDoor(redY, redX - 1)) {
+							dxRed = -1 * (random() % 2);
+						}
+
+					}
+
+					if (dxRed != 0) {
+						dyRed = 0;
+					}
+				}
+			} else {
+				if (redX == 15 && redY >= 7 && redY <= 10) {
+					dyRed = -1;
+					dxRed = 0;
+				} else {
+
+					redX = oldXRed;
+					redY = oldYRed;
+
+					if (dxRed != 0) {
+						dxRed = 0;
+						if (isNotWellOrDoor(redY + 1, redX)) {
+							dyRed = 1;
+						} else if (isNotWellOrDoor(redY - 1, redX)) {
+							dyRed = -1;
+						}
+					} else {
+						dyRed = 0;
+						if (isNotWellOrDoor(redY, redX + 1)) {
+							dxRed = 1;
+						} else if (isNotWellOrDoor(redY, redX - 1)) {
+							dxRed = -1;
+						}
+					}
+				}
+
+			}
+
+
+			// сеъеи ли PACMAN привидение (или оно нас)
+			if (pacmanLooser()) {
+				// TODO
+				//music_play(2);
+				return 0;
+			}
+
+			oldXRed = redX;
+			oldYRed = redY;
+
+		}
+	}
+
+	if (redFlag) {
+		map[redY][redX] = RED;
+	} else {
+		map[redY][redX] = SHADOW;
+	}
+
+	return 1;
+}
+
+
+/**
  *  SEGA
  *
  *  Нарисовать бонусы, очки
@@ -461,7 +747,7 @@ int pacManState() {
 void drawText() {
 	if (STATE_GAME == gameState || STATE_RESULT == gameState) {
 		// идет игра или отображаем результат игры
-
+		PAL_setColor(15,RGB24_TO_VDPCOLOR(0xffffff));
 		// количество съеденых черешень
 		text[0] = cherryBonus + '0';
 		text[1] = 0;
@@ -481,41 +767,26 @@ void drawText() {
 		text[1] = food010 + '0';
 		text[2] = food001 + '0';
 		VDP_drawText(text, 27, 24);
+		VDP_drawText("/271", 30, 24);
 	}
-	/**
+
 	if (STATE_RESULT == gameState) {
+		SYS_doVBlankProcess();
 		// отображаем результат игры
 		if (food100 == 2 && food010 == 7 && food001 == 1 && powerBonus == 4) {
 			// если победили
 			// пишем YOU WINNER
-			one_vram_buffer('Y', NTADR_A(11,25));
-			one_vram_buffer('O', NTADR_A(12,25));
-			one_vram_buffer('U', NTADR_A(13,25));
-			one_vram_buffer('W', NTADR_A(15,25));
-			one_vram_buffer('I', NTADR_A(16,25));
-			one_vram_buffer('N', NTADR_A(17,25));
-			one_vram_buffer('N', NTADR_A(18,25));
-			one_vram_buffer('E', NTADR_A(19,25));
-			one_vram_buffer('R', NTADR_A(20,25));
+			PAL_setColor(15,RGB24_TO_VDPCOLOR(0x00ff00));
+			VDP_drawText("YOU WINNER", 14, 24);
 		} else {
 			// если проиграли
 			// пишем GAME OVER
-			one_vram_buffer('G', NTADR_A(11,25));
-			one_vram_buffer('A', NTADR_A(12,25));
-			one_vram_buffer('M', NTADR_A(13,25));
-			one_vram_buffer('E', NTADR_A(14,25));
-			one_vram_buffer('O', NTADR_A(16,25));
-			one_vram_buffer('V', NTADR_A(17,25));
-			one_vram_buffer('E', NTADR_A(18,25));
-			one_vram_buffer('R', NTADR_A(19,25));
+			PAL_setColor(15,RGB24_TO_VDPCOLOR(0xff0000));
+			VDP_drawText("GAME OVER", 14, 24);
 		}
-
 		// пишем SCORE
-		one_vram_buffer('S', NTADR_A(11,27));
-		one_vram_buffer('C', NTADR_A(12,27));
-		one_vram_buffer('O', NTADR_A(13,27));
-		one_vram_buffer('R', NTADR_A(14,27));
-		one_vram_buffer('E', NTADR_A(15,27));
+		VDP_drawText("SCORE ", 14, 26);
+
 
 		// отображаем количество полученных очков
 		// с учетом всех бонусов
@@ -523,18 +794,14 @@ void drawText() {
 		// съеденный призрак 50 очков
 		// поверап 25 очков
 		// серая точка (еда) 1 очко
-		text = score100 + '0';
-		one_vram_buffer(text, NTADR_A(17,27));
-
-		text = score010 + '0';
-		one_vram_buffer(text, NTADR_A(18,27));
-
-		text = score001 + '0';
-		one_vram_buffer(text, NTADR_A(19,27));
 
 
+		text[0] = score100 + '0';
+		text[1] = score010 + '0';
+		text[2] = score001 + '0';
+		VDP_drawText(text, 20, 26);
 	}
-	*/
+
 }
 
 
@@ -587,10 +854,10 @@ void drawSprites() {
 void draw(s16 i, s16 j) {
     val = map[i][j] ;
 
-	 // x = i * 8 и на 32 пиксела вправо
+	 // x = i * 8 и на 29 пиксела вправо
     x = j * 8 + 29;
 
-    // y = j * 8 и на 0 пиксела вверх
+    // y = j * 8 и на 2 пиксела вверх
     y = i * 8 - 2;
 
     if (val == PACMAN) {
@@ -619,103 +886,75 @@ void draw(s16 i, s16 j) {
 			SPR_setAnim(pacmanSprite, 2);
 			SPR_setPosition(pacmanSprite, x, y);
 		}
-    } /**
-    else if (val == RED) {
-        if (redSprite == 1) {
-        	if (redLastUpdateTime == 0) {
-            	redSprite = 2;
-            }
+    } else if (val == RED) {
+        if (dxRed < 0) {
+          	//oam_meta_spr(x, y, RED_L1);
+        	SPR_setAnim(redSprite, 0);
+        	SPR_setHFlip(redSprite, TRUE);
+        	SPR_setPosition(redSprite, x, y);
+		} else if (dxRed > 0) {
+			//oam_meta_spr(x, y, RED_R1);
+        	SPR_setAnim(redSprite, 0);
+        	SPR_setHFlip(redSprite, FALSE);
+        	SPR_setPosition(redSprite, x, y);
+		} else if (dyRed > 0) {
+			//oam_meta_spr(x, y, RED_D1);
+        	SPR_setAnim(redSprite, 2);
+        	SPR_setPosition(redSprite, x, y);
+		} else {
+			//oam_meta_spr(x, y, RED_UP1);
+        	SPR_setAnim(redSprite, 1);
+        	SPR_setPosition(redSprite, x, y);
+		}
 
-            if (dxRed < 0) {
-            	//oam_meta_spr(x, y, RED_L1);
-            } else if (dxRed > 0) {
-            	//oam_meta_spr(x, y, RED_R1);
-            } else if (dyRed > 0) {
-            	//oam_meta_spr(x, y, RED_D1);
-            } else {
-            	//oam_meta_spr(x, y, RED_UP1);
-            }
-        } else {
-        	if (redLastUpdateTime == 0) {
-            	redSprite = 1;
-            }
-
-            if (dxRed < 0) {
-            	//oam_meta_spr(x, y, RED_L2);
-            } else if (dxRed > 0) {
-            	//oam_meta_spr(x, y, RED_R2);
-            } else if (dyRed > 0) {
-            	//oam_meta_spr(x, y, RED_D2);
-            } else {
-            	//oam_meta_spr(x, y, RED_UP2);
-            }
-        }
-    } else if (val == PACGIRL) {
-        if (pacGirlSprite == 1) {
-        	if (pacGirlLastUpdateTime == 0) {
-        		pacGirlSprite = 2;
-        	}
-
-            if (dxPacGirl < 0) {
-            	//oam_meta_spr(x, y, PACGIRL_L1);
-            } else if (dxPacGirl > 0) {
-            	//oam_meta_spr(x, y, PACGIRL_R1);
-            } else if (dyPacGirl < 0) {
-            	//oam_meta_spr(x, y, PACGIRL_UP1);
-            } else if (dyPacGirl > 0) {
-            	//oam_meta_spr(x, y, PACGIRL_D1);
-            } else {
-            	//oam_meta_spr(x, y, PACGIRL_0);
-            }
-        } else if (pacGirlSprite == 2) {
-        	if (pacGirlLastUpdateTime == 0) {
-        		pacGirlSprite = 3;
-        	}
-
-            if (dxPacGirl < 0) {
-            	//oam_meta_spr(x, y, PACGIRL_L2);
-            } else if (dxPacGirl > 0) {
-            	//oam_meta_spr(x, y, PACGIRL_R2);
-            } else if (dyPacGirl < 0) {
-            	//oam_meta_spr(x, y, PACGIRL_UP2);
-            } else if (dyPacGirl > 0) {
-            	//oam_meta_spr(x, y, PACGIRL_D2);
-            } else {
-            	//oam_meta_spr(x, y, PACGIRL_0);
-            }
-        } else if (pacGirlSprite == 3) {
-        	if (pacGirlLastUpdateTime == 0) {
-        		pacGirlSprite = 1;
-        	}
-
-			if (dxPacGirl != 0) {
-				//oam_meta_spr(x, y, PACGIRL_1);
-			} else {
-				//oam_meta_spr(x, y, PACGIRL_0);
-			}
-        }
     } else if (val == SHADOW) {
-        if (redSprite == 1) {
-        	if (redLastUpdateTime == 0) {
-            	redSprite = 2;
-            	// TODO
-            	//sfx_play(6, 0);
-            }
-            //oam_meta_spr(x, y, SPIRIT1);
-        } else {
-        	if (redLastUpdateTime == 0) {
-            	redSprite = 1;
-            	// TODO
-            	//sfx_play(8, 0);
-            }
-            //oam_meta_spr(x, y, SPIRIT2);
-        }
+		// TODO
+		//sfx_play(6, 0);
+		//oam_meta_spr(x, y, SPIRIT1);
+    	SPR_setAnim(redSprite, 3);
+    	SPR_setPosition(redSprite, x, y);
+    } else if (val == PACGIRL) {
+		if (dxPacGirl < 0) {
+			//oam_meta_spr(x, y, PACGIRL_L1);
+			SPR_setAnim(pacGirlSprite, 0);
+			SPR_setHFlip(pacGirlSprite, TRUE);
+			SPR_setVFlip(pacGirlSprite, FALSE);
+			SPR_setPosition(pacGirlSprite, x, y);
+		} else if (dxPacGirl > 0) {
+			//oam_meta_spr(x, y, PACGIRL_R1);
+			SPR_setAnim(pacGirlSprite, 0);
+			SPR_setHFlip(pacGirlSprite, FALSE);
+			SPR_setVFlip(pacGirlSprite, FALSE);
+			SPR_setPosition(pacGirlSprite, x, y);
+		} else if (dyPacGirl < 0) {
+			//oam_meta_spr(x, y, PACGIRL_UP1);
+			SPR_setAnim(pacGirlSprite, 1);
+			SPR_setVFlip(pacGirlSprite, FALSE);
+			SPR_setHFlip(pacGirlSprite, FALSE);
+			SPR_setPosition(pacGirlSprite, x, y);
+		} else if (dyPacGirl > 0) {
+			//oam_meta_spr(x, y, PACGIRL_D1);
+			SPR_setAnim(pacGirlSprite, 1);
+			SPR_setVFlip(pacGirlSprite, TRUE);
+			SPR_setHFlip(pacGirlSprite, FALSE);
+			SPR_setPosition(pacGirlSprite, x, y);
+		} else {
+			//oam_meta_spr(x, y, PACGIRL_0);
+			SPR_setAnim(pacGirlSprite, 2);
+			SPR_setHFlip(pacGirlSprite, FALSE);
+			SPR_setVFlip(pacGirlSprite, FALSE);
+			SPR_setPosition(pacGirlSprite, x, y);
+		}
+
+
     } else if (val == CHERRY) {
     	//oam_meta_spr(x, y, CHERRY_SPR);
+    	SPR_setPosition(cherrySprite, x, y);
     } else if (val == DOOR) {
     	//oam_meta_spr(x, y + 8, DOOR_SPR);
+    	SPR_setPosition(doorSprite, x, y);
     }
-    */
+
 }
 
 /**
@@ -732,6 +971,7 @@ void refreshGame() {
     if (refreshDoor) {
 		if (map[doorY][doorX] != DOOR) {
 			refreshDoor = 0;
+			SPR_setPosition(doorSprite, -90, 100);
 		} else {
 			// рисуем дверь
 			draw(doorY, doorX);
@@ -741,6 +981,7 @@ void refreshGame() {
     if (refreshCherry) {
 		if (map[cherryY][cherryX] != CHERRY) {
 			refreshCherry = 0;
+			SPR_setPosition(cherrySprite, -90, 100);
 		} else {
 		    // рисуем черешню
 	    	draw(cherryY, cherryX);
@@ -920,7 +1161,7 @@ void actions() {
 			return;
 		}
 
-		/** TODO
+
 		// двигаем RED
 		if (!redState()) {
 			// игра окончена
@@ -928,14 +1169,12 @@ void actions() {
 			return;
 		}
 
-
 		// двигаем Pac-Girl
 		if (!pacGirlState()) {
 			// игра окончена
 			gameState = STATE_RESULT;
 			return;
 		}
-		*/
 
 		if (pacmanLastUpdateTime > 0 ) {
 			// счетчик для анимации Pac-Man
@@ -1011,6 +1250,13 @@ void initScreensaver() {
     SPR_setAnim(redSprite, 0);
     SPR_setAnim(pacGirlSprite, 0);
 
+	SPR_setHFlip(redSprite, FALSE);
+	SPR_setVFlip(redSprite, FALSE);
+	SPR_setHFlip(pacmanSprite, FALSE);
+	SPR_setVFlip(pacmanSprite, FALSE);
+	SPR_setHFlip(pacGirlSprite, FALSE);
+	SPR_setVFlip(pacGirlSprite, FALSE);
+
     // соник идет - 2 строчка анимации в файле sonic.png если считать с 0
     SPR_setAnim(sonicSprite, 2);
 
@@ -1026,6 +1272,11 @@ void initScreensaver() {
     // изменяем позицию спрайта Pac-Girl
     SPR_setPosition(pacGirlSprite, pacGirlX, pacGirlY);
 
+	// скрыть черешню
+	SPR_setPosition(cherrySprite, -90, 100);
+
+	// скрыть дверь
+	SPR_setPosition(doorSprite, -90, 100);
 }
 
 /**
@@ -1147,7 +1398,7 @@ int main() {
     // добавляем спрайт Pac-Man на экран
     pacmanSprite = SPR_addSprite(&pacman_sprite, pacmanX, pacmanY, 
                                     TILE_ATTR(PAL1       // палитра
-                                                , 0      // приоритет спрайта (спрайт с меньшим числом, будет перекрывать спрайт с большим)
+                                                , 1      // приоритет спрайта (спрайт с меньшим числом, будет перекрывать спрайт с большим)
                                                 , FALSE  // перевернуть по вертикали
                                                 , FALSE  // перевернуть по горизонтали
                                               )
@@ -1166,11 +1417,30 @@ int main() {
     // добавляем спрайт Pac-Girl на экран
     pacGirlSprite = SPR_addSprite(&pacgirl_sprite, pacGirlX, pacGirlY, 
                                     TILE_ATTR(PAL1       // палитра
-                                                , 0      // приоритет спрайта (спрайт с меньшим числом, будет перекрывать спрайт с большим)
+                                                , 1      // приоритет спрайта (спрайт с меньшим числом, будет перекрывать спрайт с большим)
                                                 , FALSE  // перевернуть по вертикали
                                                 , FALSE  // перевернуть по горизонтали
                                               )
                                 );
+
+
+    // добавляем спрайт черешни  на экран
+    cherrySprite = SPR_addSprite(&cherry_sprite, cherryX, cherryY,
+                                    TILE_ATTR(PAL1       // палитра
+                                                , 1      // приоритет спрайта (спрайт с меньшим числом, будет перекрывать спрайт с большим)
+                                                , FALSE  // перевернуть по вертикали
+                                                , FALSE  // перевернуть по горизонтали
+                                              )
+                                );
+    // добавляем спрайт двери на экран
+    doorSprite = SPR_addSprite(&door_sprite, doorX, doorY,
+									TILE_ATTR(PAL1       // палитра
+												, 1      // приоритет спрайта (спрайт с меньшим числом, будет перекрывать спрайт с большим)
+												, FALSE  // перевернуть по вертикали
+												, FALSE  // перевернуть по горизонтали
+											  )
+								);
+
 
     // инициализируем положение персонажей для заставки
     initScreensaver();

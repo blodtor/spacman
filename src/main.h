@@ -290,6 +290,11 @@ Sprite* redSprite;
 // спрайт Pac-Girl
 Sprite* pacGirlSprite;
 
+// спрайт вишни
+Sprite* cherrySprite;
+
+// спрайт двери
+Sprite* doorSprite;
 
 // координаты где рисуем спрайт Соника
 s16 sonicX = -95;
