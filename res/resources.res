@@ -7,3 +7,14 @@ SPRITE red_sprite "sprite/red.png" 2 2 BEST 8
 SPRITE pacgirl_sprite "sprite/pacgirl.png" 2 2 BEST 8
 SPRITE cherry_sprite "sprite/cherry.png" 2 2 BEST 8
 SPRITE door_sprite "sprite/door.png" 2 2 BEST 8
+WAV sega_sfx "sound/sega.wav" XGM
+WAV eat_sfx "sound/eat.wav" XGM
+WAV cherry_sfx "sound/cherry.wav" XGM
+WAV powerup_sfx "sound/powerup.wav" XGM
+WAV shadow_sfx "sound/shadow.wav" XGM
+WAV eatred_sfx "sound/eatred.wav" XGM
+XGM sonic_vgm "sound/sonic.vgm"
+XGM contrah_vgm "sound/contrah.vgm"
+XGM comicszone_vgm "sound/comicszone.vgm"
+XGM victory_vgm "sound/victory.vgm"
+XGM fatality_vgm "sound/fatality.vgm"

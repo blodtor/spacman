@@ -1,8 +1,27 @@
 /**
- * Super Turbo MEGA Pac-Man 1.0
+ * Super Turbo MEGA Pac-Man 1.0 для Sega Mega Drive / Sega Genesis
  * 
- * Чтобы собрать - надо запустить ./compile.sh
+ * сборка из под Linux
+ * > ./compile.sh
+ *
+ * собирать с помащью Docker (в папке /opt/SGDK должен лежать development kit для Sega Mega Drive / Sega Genesis)
+ * > cd /opt/SGDK
+ * > docker build -t sgdk .
+ * > cd [папка где лежит проект]/spacman
+ * > docker run --rm -v "$PWD":/src sgdk
+ *
+ * собранный ROM игры будет тут:
+ * [папка где лежит проект]/spacman/out/rom.bin
  * 
+ * SGDK - свободный и открытый development kit для Sega Mega Drive / Sega Genesis (Я использовал версию 1.90)
+ *	https://github.com/Stephane-D/SGDK.git
+ *
+ * SGDK_wine - Wine wrapper скрипт генерирующий /opt/SGDK/makefile_wine.gen для SGDK чтоб использовать его в Linux
+ * https://github.com/Franticware/SGDK_wine.git
+ *
+ * Gens - это Sega Mega Drive / Sega Genesis / Sega CD / Sega 32X эмулятор для Windows и Linux.
+ * http://www.gens.me/
+ *
  * Разрешение у Sega Genesis / Sega Megadrive - 320 x 240 
  * 
  */
@@ -11,16 +30,6 @@
 
 #include "main.h"
 #include "resources.h"
-
-/**
- * NES
- *
- *  Перерисовать на бекграунде tile когда съели точку
- *  рисуем черный квадрат 8x8
- */
-void drawBlackBox(s16 y, s16 x) {
-	VDP_setTileMapXY(BG_A, 1, x + 4, y);
-}
 
 /**
  *  Подсчет отчков с учетом всех бонусов
@@ -139,31 +148,6 @@ void closeDoors(void) {
 }
 
 /**
- * Съедена еда
- * пересчитать значения счетчиков
- * food001 food010 food100
- *
- * т.к. у 8 битной консоли максимальное число 256
- * то проще считать очки в 3х отдельных переменных
- * так можно запомнить число от 000 до 999
- * ну и выводить результат так проще
- */
-void incFood() {
-	// TODO
-	//sfx_play(0, 0);
-
-	++food001;
-	if (food001 >= 10) {
-		food001 -= 10;
-		++food010;
-	}
-	if (food010 >= 10) {
-		food010 -= 10;
-		++food100;
-	}
-}
-
-/**
  * Сбрасываем все на начальные настройки по карте:
  * начальные значения счетчиков циклов
  * начальное положение персонажей
@@ -263,7 +247,38 @@ void init() {
 	map[cherryY][cherryX + 2] = EMPTY;
 }
 
+
 /**
+ * SEGA
+ *
+ * Съедена еда
+ * пересчитать значения счетчиков
+ * food001 food010 food100
+ *
+ * т.к. у 8 битной консоли максимальное число 256
+ * то проще считать очки в 3х отдельных переменных
+ * так можно запомнить число от 000 до 999
+ * ну и выводить результат так проще
+ */
+void incFood() {
+	// звук поедания точки
+	XGM_startPlayPCM(66, 1, SOUND_PCM_CH2);
+
+	++food001;
+	if (food001 >= 10) {
+		food001 -= 10;
+		++food010;
+	}
+	if (food010 >= 10) {
+		food010 -= 10;
+		++food100;
+	}
+}
+
+
+/**
+ * SEGA
+ *
  * Проиграл ли PACMAN или он мог съесть призрака
  * и что съел на месте призрака
  */
@@ -283,12 +298,16 @@ int pacmanLooser() {
 			dxPacGirl = 0;
 			dyPacGirl = 0;
 
+			// останавливаем RED
+			dxRed = 0;
+			dyRed = 0;
+
 	        calcScore();
 
 			return 1;
 		} else {
-			// TODO
-			//sfx_play(2, 0);
+			// звук поедания призрака
+			XGM_startPlayPCM(70, 15, SOUND_PCM_CH3);
 
 			// RED съедобен в данный момент
 			// Отправляем его в дом Приведений
@@ -323,8 +342,8 @@ int pacmanLooser() {
 				// поверап
 				++powerBonus;
 
-				// TODO
-				// sfx_play(5, 0);
+				// звук поедания поверапа
+				XGM_startPlayPCM(68, 15, SOUND_PCM_CH2);
 
 				// обнавляем время когда RED стал съедобным
 				redTime = RED_TIME;
@@ -335,8 +354,9 @@ int pacmanLooser() {
 
 				// скрыть черешню
 				SPR_setPosition(cherrySprite, -90, 100);
-				// TODO
-				// sfx_play(3, 0);
+
+				// звук поедания черешни
+				XGM_startPlayPCM(67, 15, SOUND_PCM_CH2);
 			}
 
 			oldRedVal = EMPTY;
@@ -350,8 +370,8 @@ int pacmanLooser() {
 			// поверап
 			++powerBonus;
 
-			// TODO
-			// sfx_play(5, 0);
+			// звук поедания поверапа
+			XGM_startPlayPCM(68, 15, SOUND_PCM_CH2);
 
 			// обнавляем время когда RED стал съедобным
 			redTime = RED_TIME;
@@ -365,9 +385,8 @@ int pacmanLooser() {
 			// скрыть черешню
 			SPR_setPosition(cherrySprite, -90, 100);
 
-
-			// TODO
-			//sfx_play(3, 0);
+			//звук поедания черешни
+			XGM_startPlayPCM(67, 15, SOUND_PCM_CH2);
 		}
 
 		map[pacGirlY][pacGirlX] = RED;
@@ -379,6 +398,8 @@ int pacmanLooser() {
 
 
 /**
+ * SEGA
+ *
  * Алгоритм обработки движения PACMAN на карте
  * return 0 - Конец игры
  *        1 - PACMAN еще жив
@@ -416,8 +437,8 @@ int pacManState() {
 				// и даем еще бонус
 				++powerBonus;
 
-				// TODO
-				//sfx_play(5, 0);
+				// звук поедания поверапа
+				XGM_startPlayPCM(68, 15, SOUND_PCM_CH2);
 
 			} else if (val == CHERRY) {
 				++cherryBonus;
@@ -425,13 +446,12 @@ int pacManState() {
 				// скрыть черешню
 				SPR_setPosition(cherrySprite, -90, 100);
 
-				// TODO
-				//sfx_play(3, 0);
+				// звук поедания черешни
+				XGM_startPlayPCM(67, 15, SOUND_PCM_CH2);
 			}
 
 
 			if (isNotWellOrDoor(pacmanY, pacmanX)) {
-				// TODO стираем то что под нами
 				// если в новой клетке не дверь то в старой делаем пустую клетку
 				map[oldY][oldX] = EMPTY;
 				drawBlackBox(oldY, oldX);
@@ -450,13 +470,17 @@ int pacManState() {
 
 			// если съеденны все FOOD и POWER_FOOD - PACMAN выиграл
 			if (food100 == 2 && food010 == 7 && food001 == 1 && powerBonus == 4) {
-				// TODO
-				//music_play(1);
+
+				// звук выиграша
+				XGM_startPlay(victory_vgm);
+
 
 				dxPacGirl = 0;
 				dyPacGirl = 0;
 				dx = 0;
 				dy = 0;
+				dxRed = 0;
+				dyRed = 0;
 
 				calcScore();
 				return 0;
@@ -464,8 +488,9 @@ int pacManState() {
 
 			// сеъеи ли PACMAN привидение (или оно нас)
 			if (pacmanLooser()) {
-				// TODO
-				//music_play(2);
+
+				// звук окончания игры
+				XGM_startPlay(fatality_vgm);
 				return 0;
 			}
 
@@ -479,6 +504,8 @@ int pacManState() {
 }
 
 /**
+ * SEGA
+ *
  * Алгоритм обработки движения PACGIRL на карте
  * return 0 - Конец игры
  *        1 - PACMAN еще жив
@@ -522,16 +549,17 @@ int pacGirlState() {
 
 				// и даем еще бонус
 				++powerBonus;
-				// TODO
-				//sfx_play(5, 0);
+
+				// звук поедания поверапа
+				XGM_startPlayPCM(68, 15, SOUND_PCM_CH2);
 			} else if (val == CHERRY) {
 				++cherryBonus;
 
 				// скрыть черешню
 				SPR_setPosition(cherrySprite, -90, 100);
 
-				// TODO
-				//sfx_play(3, 0);
+				// звук поедания черешни
+				XGM_startPlayPCM(67, 15, SOUND_PCM_CH2);
 			}
 
 			if (isNotWellOrDoor(pacGirlY, pacGirlX)) {
@@ -554,22 +582,25 @@ int pacGirlState() {
 
 			// если съеденны все FOOD и POWER_FOOD - PACMAN выиграл
 			if (food100 == 2 && food010 == 7 && food001 == 1 && powerBonus == 4) {
-				// TODO
-				//music_play(1);
+
+				// звук когда выиграли
+				XGM_startPlay(victory_vgm);
 
 				dxPacGirl = 0;
 				dyPacGirl = 0;
 				dx = 0;
 				dy = 0;
+				dxRed = 0;
+				dyRed = 0;
 
 				calcScore();
 				return 0;
 			}
 
-			// сеъеи ли PACMAN привидение (или оно нас)
+			// сеъел ли PACMAN привидение (или оно нас)
 			if (pacmanLooser()) {
-				// TODO
-				//music_play(2);
+				// звук окончания игры
+				XGM_startPlay(fatality_vgm);
 				return 0;
 			}
 
@@ -584,6 +615,8 @@ int pacGirlState() {
 
 
 /**
+ * SEGA
+ *
  * Алгоритм призрака гоняющегося за PACMAN
  * return 0 - Конец игры
  *        1 - PACMAN еще жив
@@ -717,8 +750,8 @@ int redState() {
 
 			// сеъеи ли PACMAN привидение (или оно нас)
 			if (pacmanLooser()) {
-				// TODO
-				//music_play(2);
+				// музыка оканчания игры
+				XGM_startPlay(fatality_vgm);
 				return 0;
 			}
 
@@ -735,6 +768,17 @@ int redState() {
 	}
 
 	return 1;
+}
+
+
+/**
+ *  SEGA
+ *
+ *  Перерисовать на бекграунде tile когда съели точку
+ *  рисуем черный квадрат 8x8
+ */
+void drawBlackBox(s16 y, s16 x) {
+	VDP_setTileMapXY(BG_A, 1, x + 4, y);
 }
 
 
@@ -862,84 +906,100 @@ void draw(s16 i, s16 j) {
 
     if (val == PACMAN) {
 		if (dx < 0) {
-			//oam_meta_spr(x, y, PACMAN_L1);
+			// движение налево PACMAN
 			SPR_setAnim(pacmanSprite, 0);
 			SPR_setHFlip(pacmanSprite, TRUE);
 			SPR_setPosition(pacmanSprite, x, y);
 		} else if (dx > 0) {
-			//oam_meta_spr(x, y, PACMAN_R1);
+			// движение направо PACMAN
 			SPR_setAnim(pacmanSprite, 0);
 			SPR_setHFlip(pacmanSprite, FALSE);
 			SPR_setPosition(pacmanSprite, x, y);
 		} else if (dy < 0) {
-			//oam_meta_spr(x, y, PACMAN_UP1);
+			// движение вверх PACMAN
 			SPR_setAnim(pacmanSprite, 1);
 			SPR_setVFlip(pacmanSprite, FALSE);
 			SPR_setPosition(pacmanSprite, x, y);
 		} else if (dy > 0) {
-			//oam_meta_spr(x, y, PACMAN_D1);
+			// движение вниз PACMAN
 			SPR_setAnim(pacmanSprite, 1);
 			SPR_setVFlip(pacmanSprite, TRUE);
 			SPR_setPosition(pacmanSprite, x, y);
 		} else {
-			//oam_meta_spr(x, y, PACMAN_0);
+			// стоит на месте PACMAN
 			SPR_setAnim(pacmanSprite, 2);
 			SPR_setPosition(pacmanSprite, x, y);
 		}
     } else if (val == RED) {
         if (dxRed < 0) {
-          	//oam_meta_spr(x, y, RED_L1);
+          	// движение налево RED
         	SPR_setAnim(redSprite, 0);
         	SPR_setHFlip(redSprite, TRUE);
         	SPR_setPosition(redSprite, x, y);
 		} else if (dxRed > 0) {
-			//oam_meta_spr(x, y, RED_R1);
+			// движение направо  RED
         	SPR_setAnim(redSprite, 0);
         	SPR_setHFlip(redSprite, FALSE);
         	SPR_setPosition(redSprite, x, y);
 		} else if (dyRed > 0) {
-			//oam_meta_spr(x, y, RED_D1);
+			// движение вниз RED
         	SPR_setAnim(redSprite, 2);
         	SPR_setPosition(redSprite, x, y);
+		} else if (dyRed < 0) {
+			// движение вверх RED
+			SPR_setAnim(redSprite, 1);
+        	SPR_setPosition(redSprite, x, y);
 		} else {
-			//oam_meta_spr(x, y, RED_UP1);
-        	SPR_setAnim(redSprite, 1);
+			// стоит на месте RED
+			SPR_setAnim(redSprite, 4);
         	SPR_setPosition(redSprite, x, y);
 		}
 
     } else if (val == SHADOW) {
-		// TODO
-		//sfx_play(6, 0);
-		//oam_meta_spr(x, y, SPIRIT1);
-    	SPR_setAnim(redSprite, 3);
-    	SPR_setPosition(redSprite, x, y);
+		// логика для проигрования звука когда можно есть
+    	// призрака
+    	if (shadowLastSoundTime == 0) {
+    		// звук когда RED съедобен
+    		XGM_startPlayPCM(69, 15, SOUND_PCM_CH3);
+    		shadowLastSoundTime = 20;
+    	}
+
+    	if (dxRed != 0 && dy != 0) {
+    		// движение призрака
+    		SPR_setAnim(redSprite, 3);
+    		SPR_setPosition(redSprite, x, y);
+    	} else {
+    		// призрак стоит
+    		SPR_setAnim(redSprite, 5);
+    		SPR_setPosition(redSprite, x, y);
+    	}
     } else if (val == PACGIRL) {
 		if (dxPacGirl < 0) {
-			//oam_meta_spr(x, y, PACGIRL_L1);
+			// движение налево PACGIRL
 			SPR_setAnim(pacGirlSprite, 0);
 			SPR_setHFlip(pacGirlSprite, TRUE);
 			SPR_setVFlip(pacGirlSprite, FALSE);
 			SPR_setPosition(pacGirlSprite, x, y);
 		} else if (dxPacGirl > 0) {
-			//oam_meta_spr(x, y, PACGIRL_R1);
+			// движение направо PACGIRL
 			SPR_setAnim(pacGirlSprite, 0);
 			SPR_setHFlip(pacGirlSprite, FALSE);
 			SPR_setVFlip(pacGirlSprite, FALSE);
 			SPR_setPosition(pacGirlSprite, x, y);
 		} else if (dyPacGirl < 0) {
-			//oam_meta_spr(x, y, PACGIRL_UP1);
+			// движение вверх PACGIRL
 			SPR_setAnim(pacGirlSprite, 1);
 			SPR_setVFlip(pacGirlSprite, FALSE);
 			SPR_setHFlip(pacGirlSprite, FALSE);
 			SPR_setPosition(pacGirlSprite, x, y);
 		} else if (dyPacGirl > 0) {
-			//oam_meta_spr(x, y, PACGIRL_D1);
+			// движение вниз PACGIRL
 			SPR_setAnim(pacGirlSprite, 1);
 			SPR_setVFlip(pacGirlSprite, TRUE);
 			SPR_setHFlip(pacGirlSprite, FALSE);
 			SPR_setPosition(pacGirlSprite, x, y);
 		} else {
-			//oam_meta_spr(x, y, PACGIRL_0);
+			// стоит на месте PACGIRL
 			SPR_setAnim(pacGirlSprite, 2);
 			SPR_setHFlip(pacGirlSprite, FALSE);
 			SPR_setVFlip(pacGirlSprite, FALSE);
@@ -948,10 +1008,10 @@ void draw(s16 i, s16 j) {
 
 
     } else if (val == CHERRY) {
-    	//oam_meta_spr(x, y, CHERRY_SPR);
+    	// черешня
     	SPR_setPosition(cherrySprite, x, y);
     } else if (val == DOOR) {
-    	//oam_meta_spr(x, y + 8, DOOR_SPR);
+    	// двеь
     	SPR_setPosition(doorSprite, x, y);
     }
 
@@ -1046,13 +1106,17 @@ void actions() {
 
 		   // рисуем задний фон с меню выбора игроков
 		   drawBackground();
+
+		   // останавливаем проигрывание SEGA
+		   XGM_stopPlayPCM(SOUND_PCM_CH2);
+
+		   // музыка играющая когда отображаем меню выбора количества игроков
+		   XGM_startPlay(contrah_vgm);
         }
 	} else if (STATE_SELECT == gameState) {
 		// стартовый экран (выбор количества игроков)
 		if (((pad1 & BUTTON_START) || (pad2 & BUTTON_START)) && playersTime == 0) {
 			// нажат Start на 1 или 2 джойстике
-			// TODO
-			// music_stop();
 
 			// сбросить игру в стартовое состояние
 			// начальное положение персонажей, обнулить очки, и т.д.
@@ -1077,6 +1141,8 @@ void actions() {
 			// рисуем задний фон с лабиринтом для игры
 			drawBackground();
 
+			// музыка играющая во время игры
+			XGM_startPlay(comicszone_vgm);
 			return;
 		}
 
@@ -1201,26 +1267,37 @@ void actions() {
 			// счетчик когда SHADOW вновь станет RED
 			--redTime;
 		}
+
+		if (shadowLastSoundTime > 0) {
+			--shadowLastSoundTime;
+		}
 	} else if (STATE_RESULT == gameState && ((pad1 & BUTTON_START) || (pad2 & BUTTON_START))) {
 		if (food100 == 2 && food010 == 7 && food001 == 1 && powerBonus == 4) {
 			// TODO
-			// music_play(3);
+			// логика если выиграли в игре
+			// пока незнаю что тут  напишу
 		}
 		// показываем результат игры  и на этом экране
 		// нажат Start на 1 или 2 джойстике
 
-		// переходим на стартовый экран выбора игроков
+		// переходим на экран заставки
 		gameState = STATE_SCREENSAVER;
 
 		// защита от 2го нажатия кнопки Start
 		playersTime = 30;
 
-		// нарисовать стартовый экран выбора игроков
-		drawBackground();
-
 		// нужно всех персонажей убрать с экрана
 		// для этого ставим их в начальное состояние перед запуском заставки
 		initScreensaver();
+
+		// нарисовать SEGA на заднем фоне
+		drawBackground();
+
+		// останавливаем проигрывание музыки
+		XGM_stopPlay();
+
+		// проигрываем звук SEGA!
+		XGM_startPlayPCM(64, 15, SOUND_PCM_CH2);
 	}
 
 	return;
@@ -1309,6 +1386,7 @@ void screensaver() {
 	   dxSonic = 3;
 	   // соник идет - 2 строчка анимации в файле sonic.png если считать с 0
 	   SPR_setAnim(sonicSprite, 2);
+	   XGM_startPlay(sonic_vgm);
    } else if (sonicX <= 120) {
 	   dxSonic = 5;
 	   // соник бежит - 3 строчка анимации в файле sonic.png
@@ -1320,6 +1398,24 @@ void screensaver() {
 	   dxPacGirl = 1;
 	   // соник бежит - 3 строчка анимации в файле sonic.png
 	   SPR_setAnim(sonicSprite, 3);
+   }
+
+   if (pacmanX > 70 && pacmanX < 180 && dx > 0) {
+	   if (pacmanLastUpdateTime <= 0) {
+		   XGM_startPlayPCM(66, 15, SOUND_PCM_CH2);
+		   pacmanLastUpdateTime = 10;
+	   } else {
+		   pacmanLastUpdateTime--;
+	   }
+   }
+
+   if (pacGirlX > 70 && pacGirlX < 180) {
+	   if (pacGirlLastUpdateTime <= 0) {
+		   XGM_startPlayPCM(66, 15, SOUND_PCM_CH2);
+		   pacGirlLastUpdateTime = 10;
+	   } else {
+		   pacGirlLastUpdateTime--;
+	   }
    }
 
    if (sonicX < 320) {
@@ -1374,8 +1470,17 @@ void screensaver() {
 
 // точка входа в программу
 int main() {
+	// звук SEGA
+	XGM_setPCM(64, sega_sfx, sizeof(sega_sfx));
+	XGM_setPCM(66, eat_sfx, sizeof(eat_sfx));
+	XGM_setPCM(67, cherry_sfx, sizeof(cherry_sfx));
+	XGM_setPCM(68, powerup_sfx, sizeof(powerup_sfx));
+	XGM_setPCM(69, shadow_sfx, sizeof(shadow_sfx));
+	XGM_setPCM(70, eatred_sfx, sizeof(eatred_sfx));
+
     // загружаем в tile из VDP 
     VDP_loadTileData(tile, 2, 1, 0);
+
     // инициализируем спрайтовый движок (выделяем место в VRAM под спрайты)
     SPR_init();
 
@@ -1447,6 +1552,9 @@ int main() {
 
     // рисуем в качестве заднего фона SEGA
     drawBackground();
+
+	// звук SEGA при старте игры !
+	XGM_startPlayPCM(64, 15, SOUND_PCM_CH2);
 
     // цикл анимации игры
     while(1) {

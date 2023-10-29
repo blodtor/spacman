@@ -1,9 +1,30 @@
-/** Super Turbo MEGA Pac-Man 1.0
-
-*/
-
-
-
+/**
+ * Super Turbo MEGA Pac-Man 1.0 для Sega Mega Drive / Sega Genesis
+ *
+ * сборка из под Linux
+ * > ./compile.sh
+ *
+ * собирать с помащью Docker (в папке /opt/SGDK должен лежать development kit для Sega Mega Drive / Sega Genesis)
+ * > cd /opt/SGDK
+ * > docker build -t sgdk .
+ * > cd [папка где лежит проект]/spacman
+ * > docker run --rm -v "$PWD":/src sgdk
+ *
+ * собранный ROM игры будет тут:
+ * [папка где лежит проект]/spacman/out/rom.bin
+ *
+ * SGDK - свободный и открытый development kit для Sega Mega Drive / Sega Genesis (Я использовал версию 1.90)
+ *	https://github.com/Stephane-D/SGDK.git
+ *
+ * SGDK_wine - Wine wrapper скрипт генерирующий /opt/SGDK/makefile_wine.gen для SGDK чтоб использовать его в Linux
+ * https://github.com/Franticware/SGDK_wine.git
+ *
+ * Gens - это Sega Mega Drive / Sega Genesis / Sega CD / Sega 32X эмулятор для Windows и Linux.
+ * http://www.gens.me/
+ *
+ * Разрешение у Sega Genesis / Sega Megadrive - 320 x 240
+ *
+ */
 
 /**
  * Константы 
@@ -229,6 +250,9 @@ unsigned char pacGirlLastUpdateTime = 6; //PACGIRL_SPEED;
 
 // время через которое появится вишня
 unsigned char cherryTime = CHERRY_TIME;
+
+// играет ли музыка призрака
+unsigned char shadowLastSoundTime = 0;
 
 // переменные для работы с массивами map1, map2, map3 и для циклов
 // // через функции setValToMap getValFromMap
