@@ -1546,6 +1546,8 @@ int main() {
 											  )
 								);
 
+    // заставка (надо обязательно в main выставить т.к. есть soft reset у SEGA)
+    gameState = STATE_SCREENSAVER;
 
     // инициализируем положение персонажей для заставки
     initScreensaver();
