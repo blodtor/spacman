@@ -1,8 +1,8 @@
 Super Turbo MEGA Pac-Man v1.0 - Pac-Man для игры в 2м под Sega Mega Drive / Sega Genesis
 
 папки:
-spacman-eng - проект с интерфейсом на английском
-spacman-rus - проект с интерфейсом на русском
+spacman-eng - проект с интерфейсом на Английском
+spacman-rus - проект с интерфейсом на Русском
 
 бинарники:
 spacman-eng/spacman.bin - Английская версия игры
