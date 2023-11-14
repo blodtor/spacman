@@ -1,6 +1,15 @@
 Super Turbo MEGA Pac-Man v1.0 - Pac-Man для игры в 2м под Sega Mega Drive / Sega Genesis
 
 папки:
+spacman-eng - проект с интерфейсом на английском
+spacman-rus - проект с интерфейсом на русском
+
+бинарники:
+spacman-eng/spacman.bin - Английская версия игры
+spacman-rus/spacman [RUS].bin - Русская версия иры
+
+остальные файлы относительно коталогов spacman-eng или spacman-rus 
+
 src - тут исходники
 res - тут ресурсные файлы
 out - тут результаты сборки
@@ -47,6 +56,8 @@ res/sprite/pacman.png - спрайты Pac-Man
 res/sprite/red.png - спрайт призрака RED
 res/sprite/sonic.png - спрайты Соника для заставки
 
+res/font.png - шрифты для Русского языка
+
 res/resources.res - как импортировать ресурсы
 
 исходный код:
@@ -76,4 +87,4 @@ http://www.gens.me/
 
 spacman.bin - ROM игры Super Turbo MEGA Pac-Man для Sega Mega Drive / Sega Genesis
 
-BlodTor 30.10.2023
+BlodTor 15.10.2023
