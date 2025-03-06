@@ -10,8 +10,8 @@ const ROMHeader rom_header = {
     "SEGA MEGA DRIVE ",
 #endif
     "(C)SGDK 2023    ",
-    "SAMPLE PROGRAM                                  ",
-    "SAMPLE PROGRAM                                  ",
+    "SUPER TURBO MEGA PAC-MAN                        ",
+    "SUPER TURBO MEGA PAC-MAN                        ",
     "GM 00000000-00",
     0x000,
     "JD              ",
