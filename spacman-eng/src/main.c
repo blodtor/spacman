@@ -1075,17 +1075,22 @@ u8 redState() {
 		// если не двигается, пусть идет вверх
 		if (dyRed == 0 && dxRed == 0) {
 			dyRed = -1;
+			dxRed = 0;
 		}
-	} else if (redLastUpdateTime == 0 && dyRed == 0 && dxRed == 0){
+	} else if (redLastUpdateTime == 0 && dyRed == 0 && dxRed == 0) {
+		// пока призрак не может двигаться
 		redLastUpdateTime = RED_SPEED;
 	}
 
 	// проверяем, у RED задоно ли направление движения
 	if (dxRed != 0 || dyRed != 0) {
 		if (redLastUpdateTime == 0) {
+			// можно обновить координаты призрака
+			// запоминаем старые координаты призрака
 			oldXRed = redX;
 			oldYRed = redY;
 
+			// меняем координаты призрака (одеовременно dxRed и dyRed не могут быть больше 0!)
 			redX = redX + dxRed;
 			redY = redY + dyRed;
 
@@ -1095,100 +1100,134 @@ u8 redState() {
 			moveBound(&redX, &redY);
 
 			if (isNotWell(redY, redX)) {
+				// текущие координаты не препядствие
 				map[oldYRed][oldXRed] = oldRedVal;
 				oldRedVal = map[redY][redX];
 
 				if (redX == 15 && redY >= 7 && redY <= 10) {
+					// призрак из дома призрака всегда выходит вверх
+					// ну и зайти назад не может!
 					dyRed = -1;
 					dxRed = 0;
 				} else if (dxRed != 0) {
+					// призрак двигается по оси X
 					if (redFlag && redY != pacmanY) {
-						if (isNotWellOrDoor(redY + 1, redX)
-								&& isNotWellOrDoor(redY - 1, redX)) {
+						// призрак не съедобен и не догнал Pac-Man
+						if (isNotWellOrDoor(redY + 1, redX)	&& isNotWellOrDoor(redY - 1, redX)) {
+							// есть альтернативный путь по оси x
 							if (abs(redY + 1 - pacmanY) < abs(redY - 1 - pacmanY)) {
+								// путь до Pac-Man вниз короче до Pac-Man по Y
 								dyRed = 1;
 							} else {
+								// путь до Pac-Man вверх короче до Pac-Man по Y
 								dyRed = -1;
 							}
 						} else if (isNotWellOrDoor(redY + 1, redX)) {
+							// есть путь вниз
 							if (abs(redY + 1 - pacmanY) < abs(redY - pacmanY)) {
+								// путь вниз короче до Pac-Man по Y
 								dyRed = 1;
 							}
 						} else if (isNotWellOrDoor(redY - 1, redX)) {
+							// есть путь вверх
 							if (abs(redY - 1 - pacmanY) < abs(redY - pacmanY)) {
+								// путь вверх короче до Pac-Man по Y
 								dyRed = -1;
 							}
 						}
 					} else {
+						// Призрак съедобен
 						if (isNotWellOrDoor(redY + 1, redX)) {
+							// если есть другой путь выбираем случайно куда пойдет призрак
 							dyRed = random() % 2;
 						}
 
 						if (isNotWellOrDoor(redY - 1, redX)) {
+							// если есть другой путь выбираем случайно куда пойдет призрак
 							dyRed = -1 * (random() % 2);
 						}
 					}
 
 					if (dyRed != 0) {
+						// если меняется направление движения с x на y надо обнулить смещение по x
 						dxRed = 0;
 					}
 
 				} else if (dyRed != 0) {
+					// призрак двигается по оси Y
 					if (redFlag && redX != pacmanX) {
-						if (isNotWellOrDoor(redY, redX + 1)
-								&& isNotWellOrDoor(redY, redX - 1)) {
+						// призрак не съедобен и не догнал Pac-Man
+						if (isNotWellOrDoor(redY, redX + 1)	&& isNotWellOrDoor(redY, redX - 1)) {
+							// есть альтернативный путь выбираем какой короче по X
 							if (abs(redX + 1 - pacmanX) < abs(redX - 1 - pacmanX)) {
+								// путь впаво короче до Pac-Man по X
 								dxRed = 1;
 							} else {
+								// путь влево короче до Pac-Man по X
 								dxRed = -1;
 							}
 						} else if (isNotWellOrDoor(redY, redX + 1)) {
+							// есть альтернативный путь вправо
 							if (abs(redX + 1 - pacmanX) < abs(redX - pacmanX)) {
+								// путь вправо короче до Pac-Man по X
 								dxRed = 1;
 							}
-						} else if (isNotWellOrDoor(redY - 1, redX)) {
+						} else if (isNotWellOrDoor(redY, redX - 1)) {
+							// слква есть альтернативный путь для призрака
 							if (abs(redX - 1 - pacmanX) < abs(redX - pacmanX)) {
+								// путь влево короче до Pac-Man по X
 								dxRed = -1;
 							}
 
 						}
 					} else {
-
+						// Призрак съедобен
 						if (isNotWellOrDoor(redY, redX + 1)) {
+							// если есть другой путь выбираем случайно куда пойдет призрак
 							dxRed = random() % 2;
 						}
 
 						if (isNotWellOrDoor(redY, redX - 1)) {
+							// если есть другой путь выбираем случайно куда пойдет призрак
 							dxRed = -1 * (random() % 2);
 						}
 
 					}
 
 					if (dxRed != 0) {
+						// если меняется направление движения с y на x надо обнулить смещение по y
 						dyRed = 0;
 					}
 				}
 			} else {
+				// текущие координаты у призрака - припятствие, надо изменить направление движения
 				if (redX == 15 && redY >= 7 && redY <= 10) {
+					// из дома призрака выходит он всегда вверх
 					dyRed = -1;
 					dxRed = 0;
 				} else {
-
+					// возвращаем призорака в предидущие координаты
 					redX = oldXRed;
 					redY = oldYRed;
 
 					if (dxRed != 0) {
+						// если призрак двигался по оси x надо его остановить
 						dxRed = 0;
 						if (isNotWellOrDoor(redY + 1, redX)) {
+							// можно двигатся вниз
 							dyRed = 1;
 						} else if (isNotWellOrDoor(redY - 1, redX)) {
+							// можно двигаться вверх
 							dyRed = -1;
 						}
 					} else {
+						// если двигались по оси y
 						dyRed = 0;
 						if (isNotWellOrDoor(redY, redX + 1)) {
+							// можем двигаться вправо
 							dxRed = 1;
 						} else if (isNotWellOrDoor(redY, redX - 1)) {
+							// можем двигаться влево
 							dxRed = -1;
 						}
 					}
@@ -1201,6 +1240,7 @@ u8 redState() {
 			if (pacmanLooser()) {
 				// музыка оканчания игры
 				XGM_startPlay(fatality_vgm);
+				// Pac-Man съеден, игра закончена
 				return 0;
 			}
 
@@ -1208,11 +1248,14 @@ u8 redState() {
 	}
 
 	if (redFlag) {
+		// отображаем спрайт красного призрака
 		map[redY][redX] = RED;
 	} else {
+		// отображаем спрайт убегающего призрака
 		map[redY][redX] = SHADOW;
 	}
 
+	// Pac-Man не съеден, игра продолжается
 	return 1;
 }
 
