@@ -77,7 +77,7 @@
 #define LCP_HI_BITS  			0b11110000
 
 // таймаут - используется для ожидания данных от другой приставки (ожидание сброса или установки 6 бита в LCP_Data)
-#define LCP_TIME_OUT 			0x80
+#define LCP_TIME_OUT 			0x30
 
 // максимальный размер пакета для передачи данных через Link cable
 #define LCP_PACKET_SIZE			2048
@@ -232,5 +232,6 @@ u16 LCP_getReciveTail();
  * return LCP_error
  */
 u16 LCP_getError();
+
 
 #endif // _LINK_CABLE_H

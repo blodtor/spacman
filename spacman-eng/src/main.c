@@ -339,10 +339,12 @@ void initControllerPort2() {
 		// возможно есть соединение через Link cabile
 		u16 objectType = 0;
 		u16 lcpError = 0;
-		// сброс ошибок при передаче данных в 0 которые показываем на экране
+		// сброс ошибок при передаче данных в 0 которые показываем на экране через Link cabile
 		linkCableErrors = 0;
-		// сброс количества ошибок при передаче данных
+		// сброс количества ошибок при передаче данных через Link cabile
 		linkCableErrorsCount = 0;
+		// сброс количества отресованных фреймов с начала создания соединения через Link cabile
+		linkCableFrameCount = 0;
 
 		memcpy(gameModeText, "TRY MASTER!", GAME_MODE_TEXT_LENGHT);
 		drawText();
@@ -809,7 +811,11 @@ u8 pacmanLooser() {
 				XGM_startPlayPCM(SFX_SOUND_CHERRY, 15, SOUND_PCM_CH2);
 			}
 
-			oldRedVal = EMPTY;
+			if (cherryBonus) {
+				oldRedVal = EMPTY;
+			} else {
+				oldRedVal = CHERRY;
+			}
 		}
 	} else if (redY == pacGirlY && redX == pacGirlX) {
 		// проверяем что Pac-Girl съела на месте RED
@@ -834,6 +840,7 @@ u8 pacmanLooser() {
 
 			// скрыть черешню
 			SPR_setPosition(cherrySprite, -90, 100);
+			refreshCherry = 0;
 
 			//звук поедания черешни
 			XGM_startPlayPCM(SFX_SOUND_CHERRY, 15, SOUND_PCM_CH2);
@@ -896,6 +903,7 @@ u8 pacManState() {
 
 				// скрыть черешню
 				SPR_setPosition(cherrySprite, -90, 100);
+				refreshCherry = 0;
 
 				// звук поедания черешни
 				XGM_startPlayPCM(SFX_SOUND_CHERRY, 15, SOUND_PCM_CH2);
@@ -1007,6 +1015,7 @@ u8 pacGirlState() {
 
 				// скрыть черешню
 				SPR_setPosition(cherrySprite, -90, 100);
+				refreshCherry = 0;
 
 				// звук поедания черешни
 				XGM_startPlayPCM(SFX_SOUND_CHERRY, 15, SOUND_PCM_CH2);
@@ -1321,18 +1330,27 @@ void printU16(u16 val) {
  */
 void drawText() {
 
-	if (showLinkCableErrors == 1) {
-		// выводим на экран ошибки при передаче через Link Cadle
-		printU16(linkCableErrors);
-		VDP_drawText(text, 28, 25);
-	}
+	switch (showLinkCableErrors) {
+		case SHOW_LINK_CABLE_LAST_ERROR:
+			// выводим на экран ошибки при передаче через Link Cadle
+			printU16(linkCableErrors);
+			VDP_drawText(text, 28, 25);
+		break;
 
-	if (showLinkCableErrors == 2) {
-		// выводим на экран количество ошибок при передаче через Link Cadle
-		printU16(linkCableErrorsCount);
-		VDP_drawText(text, 28, 25);
-	}
 
+		case SHOW_LINK_CABLE_ERROS_COUNT:
+			// выводим на экран количество ошибок при передаче через Link Cadle
+			printU16(linkCableErrorsCount);
+			VDP_drawText(text, 28, 25);
+		break;
+
+
+		case SHOW_LINK_CABLE_FRAME_COUNT:
+			//  количество отресованных фреймов с начала создания соединения через Link Cadle
+			printU16(linkCableFrameCount);
+			VDP_drawText(text, 28, 25);
+		break;
+	}
 
 	if (STATE_SCREENSAVER != gameState) {
 		// кем мы играем при ире по Link Cable
@@ -1644,11 +1662,10 @@ void refreshGame() {
 
     if (refreshCherry) {
 		if (map[cherryY][cherryX] != CHERRY) {
-			refreshCherry = 0;
 			SPR_setPosition(cherrySprite, -90, 100);
 		} else {
 		    // рисуем черешню
-			draw(cherryY, cherryX);
+	    	drawSprite(cherryY, cherryX, CHERRY);
 		}
     }
 
@@ -2052,12 +2069,17 @@ void actions() {
 
 	if (((pad1 & BUTTON_A) && (pad1 & BUTTON_C)) || ((pad2 & BUTTON_A) && (pad2 & BUTTON_C))) {
 		// вывод на экран ошибок при работе с Link cable protocol
-		showLinkCableErrors = 1;
+		showLinkCableErrors = SHOW_LINK_CABLE_LAST_ERROR;
 	}
 
 	if (((pad1 & BUTTON_B) && (pad1 & BUTTON_C)) || ((pad2 & BUTTON_B) && (pad2 & BUTTON_C))) {
-			// вывод на экран количества ошибок при работе с Link cable protocol
-		showLinkCableErrors = 2;
+		// вывод на экран количества ошибок при работе с Link cable protocol
+		showLinkCableErrors = SHOW_LINK_CABLE_ERROS_COUNT;
+	}
+
+	if (((pad1 & BUTTON_A) && (pad1 & BUTTON_X)) || ((pad2 & BUTTON_A) && (pad2 & BUTTON_X))) {
+		// вывод на экран количества ошибок при работе с Link cable protocol
+		showLinkCableErrors = SHOW_LINK_CABLE_FRAME_COUNT;
 	}
 
 	if (((pad1 & BUTTON_A) && (pad1 & BUTTON_B)) || ((pad2 & BUTTON_A) && (pad2 & BUTTON_B))) {
@@ -2065,6 +2087,8 @@ void actions() {
 		linkCableErrors = 0;
 		// сброс количества ошибок
 		linkCableErrorsCount = 0;
+		// сброс количества кадров
+		linkCableFrameCount = 0;
 	}
 
 	switch (gameState) {
@@ -2585,6 +2609,8 @@ int main() {
         //  делает всю закулисную обработку, нужен когда есть спрайты, музыка, джойстик.
         SYS_doVBlankProcess();
 
+        // количество отресованных фреймов
+        linkCableFrameCount++;
     }
 
     return (0);

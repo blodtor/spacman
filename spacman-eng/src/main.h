@@ -183,6 +183,18 @@
 // звук отключения соединения через Link cable
 #define SFX_SOUND_DISCONNECT_LINK_CABLE	74
 
+// Ни чего не показываем из отладочной информации
+#define SHOW_LINK_CABLE_NO			0
+
+// выводим на экран ошибки при передаче через Link Cadle
+#define SHOW_LINK_CABLE_LAST_ERROR	1
+
+// выводим на экран количество ошибок при передаче через Link Cadle
+#define SHOW_LINK_CABLE_ERROS_COUNT	2
+
+// количество отресованных фреймов с начала создания соединения через Link Cadle
+#define SHOW_LINK_CABLE_FRAME_COUNT 3
+
 /**
  * Глобальные переменные
  */
@@ -428,13 +440,16 @@ s16 sonicY = 83;
 s16 dxSonic = 1;
 
 // показывать ошибки происходящие при передаче данных через Link Cable
-u8 showLinkCableErrors = 0;
+u8 showLinkCableErrors = SHOW_LINK_CABLE_NO;
 
 // ошибка которая произошла при передаче данных через Link cable
 u16 linkCableErrors = 0;
 
 // количество ошибок при передаче через Link cable
 u16 linkCableErrorsCount = 0;
+
+// количество отресованных фреймов с начала создания соединения
+u16 linkCableFrameCount = 0;
 
 
 // какой игрок каким персонажем играет
