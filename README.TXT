@@ -1,9 +1,17 @@
-Super Turbo MEGA Pac-Man v2.0
+Super Turbo MEGA Pac-Man v2.02
 Pac-Man для игры в 2м под Sega Mega Drive / Sega Genesis
 
 - добавлена 'пауза' в игре при нажатии на start
 - возможность смены персонажей 'нажать вправо' в меню '2 PLAYERS'
 - игра по сети на 2х приставках через SEGA Link cable
+- вывод последней ошибки при передаче через SEGA Link cable A+C
+- вывод количества ошибок при передаче через SEGA Link cable B+C
+- вывод количества отресованных фреймов с начала соединения A+X
+- сброс информации для отладки A+B
+- при движении вниз призрак не смотрит больше в сторону 
+- призрак не 'ест' черешню
+- посылаю что нажато на контроллерах через SEGA Link cable только если действительно что то нажато 
+- оставил доступными только нужные извне функции в библиотеке link_cable.h
 
 папки:
 spacman-eng - проект с интерфейсом на Английском
@@ -74,10 +82,10 @@ src/main.c - код игры
 src/main.h - заголовочный файл игры с глобальными переменными,
 		     константами, объявлением функций приложения
 src/link_cable.h - заголовочный файл библиотеки Link cable Protocol (LCP)
-				   протокол для обмена данными через SEGA Link Cable двух приставок 
+				   протокол для обмена данными через SEGA Link Cable двух приставок
 				   Sega Mega Drive / Sega Genesis
 Genesis который втыкается в второй порт приставок для SGDK 1.90 (July 2023)
-src/link_cable.c - реализация протокола для обмена данными через SEGA Link Cable 
+src/link_cable.c - реализация протокола для обмена данными через SEGA Link Cable
 				   двух приставок Sega Mega Drive / Sega Genesis
 res/resources.h - заголовочный файл описывающий импортируемые ресурсы
 
@@ -112,4 +120,4 @@ http://www.gens.me/
 spacman.bin - ROM игры Super Turbo MEGA Pac-Man для Sega Mega Drive /
 Sega Genesis
 
-BlodTor 07.03.2025
+BlodTor 18.03.2025

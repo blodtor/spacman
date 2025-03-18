@@ -2335,19 +2335,18 @@ void controls() {
 			// master - наша приставка ведущая, игра в двоем через Link cable (сетевая ига на двух приставках SEGA)
 			// играем за первого игрока PAC-MAN
 
-			// сбрасываем Tail и Head буферов
-			LCP_clearSendHeadAndTail();
-			LCP_clearReciveHeadAndTail();
-
 			// считаем что на 2 контроллере ничего не нажато
 			pad2 = 0;
 
-			// в transferObject положим объект содержащий информацию о нажатых кнопках на 1 контроллере нашей приставки
-			// т.е. там будет лежать объект OBJECT_TYPE_JOY в виде байтового массива
-			padToTransferObject(pad1);
+			if (pad1) {
+				// в transferObject положим объект содержащий информацию о нажатых кнопках на 1 контроллере нашей приставки
+				// т.е. там будет лежать объект OBJECT_TYPE_JOY в виде байтового массива (если что то было нажато)
+				padToTransferObject(pad1);
 
-			// добавим объект OBJECT_TYPE_JOY в пакет который будет передан другой приставке при вызове LCP_masterCycle()
-			LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_JOY, LINK_TYPES_LENGHT);
+
+				// добавим объект OBJECT_TYPE_JOY в пакет который будет передан другой приставке при вызове LCP_masterCycle()
+				LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_JOY, LINK_TYPES_LENGHT);
+			}
 
 			if (STATE_SELECT == gameState) {
 				// отправляем информацию какой игрок кем играет
@@ -2391,22 +2390,19 @@ void controls() {
 			// slave - наша приставка ведомая, игра в двоем через Link cable (сетевая ига на двух приставках SEGA)
 			// играем за второго игрока PAC-GIRL
 
-			if (LCP_getSendHead() == LCP_getSendTail() && LCP_getSendTail() > 0) {
-				// если пакет полностью передан, сбрасываем Head и Tail пакета для отправки данных
-				LCP_clearSendHeadAndTail();
-			}
-
 			// мы играем за второго игрока, Pac-Girl по этому что нажато на первом контролере
 			// сохраняем в переменную 2 го контроллера
 			pad2 = pad1;
 
-			// в transferObject положим объект содержащий информацию о нажатых кнопках на 1 контроллере нашей приставки
-			// т.е. там будет лежать объект OBJECT_TYPE_JOY в виде байтового массива
-			padToTransferObject(pad1);
+			if (pad1) {
+				// в transferObject положим объект содержащий информацию о нажатых кнопках на 1 контроллере нашей приставки
+				// т.е. там будет лежать объект OBJECT_TYPE_JOY в виде байтового массива (если что то было нажато)
+				padToTransferObject(pad1);
 
-			// добавим объект OBJECT_TYPE_JOY в пакет который будет передан другой приставке при вызове LCP_slaveCycle()
-			// в момент получения внешнего прерывания вызванного ведущей приставкой (master) в рандомный  момент времени для нас
-			LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_JOY, LINK_TYPES_LENGHT);
+				// добавим объект OBJECT_TYPE_JOY в пакет который будет передан другой приставке при вызове LCP_slaveCycle()
+				// в момент получения внешнего прерывания вызванного ведущей приставкой (master) в рандомный  момент времени для нас
+				LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_JOY, LINK_TYPES_LENGHT);
+			}
 
 			// счтаем что на 1 контроллере на данный момент ничего не нажато
 			pad1 = 0;

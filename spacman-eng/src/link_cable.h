@@ -183,50 +183,6 @@ void LCP_masterCycle();
 
 
 /**
- * Сбросить индексы начала и конеца данных в пакете для отправки через Link cable (массив LCP_sendPacket)
- */
-void LCP_clearSendHeadAndTail();
-
-
-/**
-* Сбросить индексы начала и конеца данных в пакете для получения через Link cable (массив LCP_recivePacket)
-*/
-void LCP_clearReciveHeadAndTail();
-
-
-/**
- * Возвращает индекс начала данных в массиве LCP_sendPacket
- *
- * return LCP_sendHead
- */
-u16 LCP_getSendHead();
-
-
-/**
- * Возврощает индекс конеца данных в массиве LCP_sendPacket
- *
- * return LCP_sendTail
- */
-u16 LCP_getSendTail();
-
-
-/**
- * Возвращает индекс начала данных в массиве LCP_recivePacke
- *
- * return LCP_reciveHead
- */
-u16 LCP_getReciveHead();
-
-
-/**
- * Возвращает индекс конеца данных в массиве LCP_recivePacket
- *
- * return u16 LCP_reciveTail
- */
-u16 LCP_getReciveTail();
-
-
-/**
  * Ошибка при передачи данных через SEGA Link cable
  *
  * return LCP_error

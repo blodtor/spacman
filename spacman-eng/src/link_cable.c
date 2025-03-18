@@ -247,6 +247,18 @@ static void LCP_slaveCycleEnd();
 
 
 /**
+ * Сбросить индексы начала и конеца данных в пакете для отправки через Link cable (массив LCP_sendPacket)
+ */
+void LCP_clearSendHeadAndTail();
+
+
+/**
+* Сбросить индексы начала и конеца данных в пакете для получения через Link cable (массив LCP_recivePacket)
+*/
+void LCP_clearReciveHeadAndTail();
+
+
+/**
  * Реализация функций библиотеки
  */
 
@@ -1213,8 +1225,9 @@ void LCP_masterCycle() {
     // проверяем что полученная сумма от ведомой приставки равна чексумме расчитанной в оснвном цикле
     if (data == checksum) {
     	// данные успешно получены ведемой SEGA
-    	// индекс начала данных которые необходимо передать устанавливаем на конец данных в буфере
-	    LCP_sendHead = LCP_sendTail;
+    	// индекс начала данных которые необходимо передать и на конец данных в буфере сбрасываем
+    	// так как ведомая приставка получила все данные успешно
+	    LCP_clearSendHeadAndTail();
     } else {
 		// 0x80 - контрольная сумма расчитанная ведущей приставкой (master) <> контрольной сумме полученной от ведомой приставки (slave)
 		LCP_error |= 0x80;
@@ -1610,10 +1623,10 @@ static void LCP_slaveCycle() {
     	return;
     }
 
-    // если полученная контрольная сумма в data от ведущей приставки (master) равна переданой и вычисленной нашей приставкой (slave)
-    // то устанавливаем индекс начала пакета на индекс конца пакета (все удачно отправили)
     if (data == checksum) {
-	    LCP_sendHead = LCP_sendTail;
+        // если полученная контрольная сумма в data от ведущей приставки (master) равна переданой и вычисленной нашей приставкой (slave)
+        // то устанавливаем индекс начала пакета и индекс конца пакета в 0 (все удачно отправили)
+	    LCP_clearSendHeadAndTail();
 	} else {
 		// 0xC0 - контрольная сумма расчитанная ведомой приставкой (slave) <> контрольной сумме полученной от ведущей приставки (master)
 		LCP_error |= 0xC0;
@@ -1684,42 +1697,6 @@ static void LCP_slaveCycleEnd() {
 
     // включаем обработку всех прерываний
 	SYS_enableInts();
-}
-
-
-/**
- * return LCP_sendHead
- */
-u16 LCP_getSendHead() {
-	return LCP_sendHead;
-}
-
-
-/**
- * return LCP_sendTail
- */
-u16 LCP_getSendTail() {
-	return LCP_sendTail;
-}
-
-
-/**
- * Возвращает индекс начала данных в массиве LCP_recivePacke
- *
- * return LCP_reciveHead
- */
-u16 LCP_getReciveHead() {
-	return LCP_reciveHead;
-}
-
-
-/**
- * Возвращает индекс конеца данных в массиве LCP_recivePacket
- *
- * return u16 LCP_reciveTail
- */
-u16 LCP_getReciveTail() {
-	return LCP_reciveTail;
 }
 
 

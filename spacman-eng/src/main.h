@@ -178,7 +178,7 @@
 #define SFX_SOUND_EAT_SHADOW		70
 
 // звук создания соединения через Link cable
-#define SFX_SOUND_CONNECT_LINK_CABLE		72
+#define SFX_SOUND_CONNECT_LINK_CABLE	72
 
 // звук отключения соединения через Link cable
 #define SFX_SOUND_DISCONNECT_LINK_CABLE	74
@@ -477,9 +477,11 @@ char gameModeText[GAME_MODE_TEXT_LENGHT + 1];
 
 /**
  * 0 - не объект
- * длинна типа данных MASTER_OBJECT_LENGTH = 4 байта
- * длинна типа данных SLAVE_OBJECT_LENGHT  = 5 байт
- * длинна типа данных JOY_OBJECT_LENGHT    = 2 байта
+ * длинна типа данных MASTER_OBJECT_LENGTH	    = 8  байт
+ * длинна типа данных SLAVE_OBJECT_LENGHT 		= 8  байт
+ * длинна типа данных JOY_OBJECT_LENGHT    		= 2  байта
+ * длинна типа данных GAME_STATE_OBJECT_LENGHT 	= 34 байта
+ * длинна типа данных SWITCH_PLAYERS_LENGHT		= 2  байта
  */
 u16 LINK_TYPES_LENGHT[] = {0, MASTER_OBJECT_LENGTH, SLAVE_OBJECT_LENGHT, JOY_OBJECT_LENGHT, GAME_STATE_OBJECT_LENGHT, SWITCH_PLAYERS_LENGHT};
 
