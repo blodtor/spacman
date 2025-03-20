@@ -7,6 +7,8 @@ extern const u8 cherry_sfx[20224];
 extern const u8 powerup_sfx[16640];
 extern const u8 shadow_sfx[19968];
 extern const u8 eatred_sfx[21248];
+extern const u8 connect_sfx[23552];
+extern const u8 disconnect_sfx[16896];
 extern const u8 sonic_vgm[21760];
 extern const u8 contrah_vgm[135936];
 extern const u8 comicszone_vgm[52736];
@@ -21,6 +23,7 @@ extern const SpriteDefinition red_sprite;
 extern const SpriteDefinition pacgirl_sprite;
 extern const SpriteDefinition cherry_sprite;
 extern const SpriteDefinition door_sprite;
+extern const SpriteDefinition pause_sprite;
 extern const TileSet font_rus;
 
 #endif // _RES_RESOURCES_H_

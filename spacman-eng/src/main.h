@@ -47,46 +47,6 @@
 // пауза - экран карта уровня с пробегающим соником и словом PAUSE летающей по всему экрану, при нажатии на старт на STATE_GAME
 #define STATE_PAUSE 	  			4
 
-// тип данных объекта: master - ключевое слово которое пришлет ведомой приставке ведущая при инициализации соединения
-#define OBJECT_TYPE_MASTER 			1
-
-// тип данных объекта: slave - ключевое слово которое пришлет ведущей приставке ведомая при инициализации соединения
-#define OBJECT_TYPE_SLAVE  			2
-
-// тип данных объекта: joy - нажатые кнопки на контроллере в первом порту SEGA
-#define OBJECT_TYPE_JOY    			3
-
-// тип данных объекта: game state - сотояние игры
-#define OBJECT_TYPE_GAME_STATE  	4
-
-// тип данных объекта: switch plaers кто каким персонажем играет
-#define OBJECT_TYPE_SWITCH_PLAYERS 	5
-
-// длинна типа данных 'master' - 8 байт, текст: 'Pac-Girl'
-#define MASTER_OBJECT_LENGTH 		8
-
-// длинна типа данных 'slave' - 8 байт, текст: 'Pac-Man!'
-#define SLAVE_OBJECT_LENGHT  		8
-
-// длинна типа двнных 'game state' - 34 байта
-#define GAME_STATE_OBJECT_LENGHT 	34
-
-// длинна типа данных 'joy' - 2 байта (состояние всех нажатых кнопок на контроллере)
-#define JOY_OBJECT_LENGHT 	 		2
-
-// длинна типа данных 'switch plaers' - 2 байта
-#define SWITCH_PLAYERS_LENGHT 		2
-
-// длинна текста выводимого на экран о типе игры, текст может быть таким:
-// '1P NO LINK!' игра на одной приставке, во втором порту ни чего не обнаружено, controllerPort2Mode = MODE_SINGLE_PLAYER
-// '2P NO Link!' игра на одной приставке, на двух контроллерах, controllerPort2Mode = MODE_MULTY_PLAYER
-// 'TRY MASTER!' пытаемся стать ведущей приставкой, предполагаем что во втором порту Linc cable
-// 'TRY  SLAVE!' пытаемся стать ведомой приставкой, предполагаем что во втором порту Linc cable
-// 'LINK MASTER' игра на двух приставках через Link cable мы ведущая приставка, controllerPort2Mode = MODE_PORT2_MASTER
-// 'LINK  SLAVE' игра на двух приставках через Link cable мы ведомая приставка, controllerPort2Mode = MODE_PORT2_SLAVE
-// '           ' не известно есть ли соединение между приставками и что воткнуто в 2 порт, controllerPort2Mode = MODE_PORT2_UNKNOWN
-#define GAME_MODE_TEXT_LENGHT	 	11
-
 // Еда
 #define FOOD 					    '.'
 
@@ -195,9 +155,153 @@
 // количество отресованных фреймов с начала создания соединения через Link Cadle
 #define SHOW_LINK_CABLE_FRAME_COUNT 3
 
+// При игре на одной приставке первый игрок - Pac-Man, второй игрок - Pac-Girl.
+// При игре на двух приставках через Link cable, master - Pac-Man, slave - Pac-Girl.
+#define P1_PACMAN__P2_PACGIRL 		0
+
+// При игре на одной приставке первый игрок - Pac-Girl, второй игрок - Pac-Man.
+// При игре на двух приставках через Link cable, master - Pac-Girl, slave - Pac-Man.
+#define P1_PACGIRL__P2_PACMAN		1
+
+// длинна текста выводимого на экран о типе игры, текст может быть таким:
+// '1P NO LINK!' игра на одной приставке, во втором порту ни чего не обнаружено, controllerPort2Mode = MODE_SINGLE_PLAYER
+// '2P NO Link!' игра на одной приставке, на двух контроллерах, controllerPort2Mode = MODE_MULTY_PLAYER
+// 'TRY MASTER!' пытаемся стать ведущей приставкой, предполагаем что во втором порту Linc cable
+// 'TRY  SLAVE!' пытаемся стать ведомой приставкой, предполагаем что во втором порту Linc cable
+// 'LINK MASTER' игра на двух приставках через Link cable мы ведущая приставка, controllerPort2Mode = MODE_PORT2_MASTER
+// 'LINK  SLAVE' игра на двух приставках через Link cable мы ведомая приставка, controllerPort2Mode = MODE_PORT2_SLAVE
+// '           ' не известно есть ли соединение между приставками и что воткнуто в 2 порт, controllerPort2Mode = MODE_PORT2_UNKNOWN
+#define GAME_MODE_TEXT_SIZE	 	11
+
+// Ниже объявлены константы для функций LCP_objectToPacketForSend() и LCP_getNextObjectFromRecivePacket()
+// чтоб протокол понял какой объект был передан в массиве transferObject или получен от другой приставки и какого он размера
+// в протоколе нет информации об объектах каторые он передает, ему всеравно что передавать!
+
+// тип данных объекта: master - ключевое слово которое пришлет ведомой приставке ведущая при инициализации соединения
+#define OBJECT_TYPE_MASTER 			1
+
+// тип данных объекта: slave - ключевое слово которое пришлет ведущей приставке ведомая при инициализации соединения
+#define OBJECT_TYPE_SLAVE  			2
+
+// тип данных объекта: joy - нажатые кнопки на контроллере в первом порту SEGA
+#define OBJECT_TYPE_JOY    			3
+
+// тип данных объекта: switch plaers кто каким персонажем играет
+#define OBJECT_TYPE_SWITCH_PLAYERS 	4
+
+// тип данных объекта: кординаты и направление движение PAC-MAN
+#define OBJECT_TYPE_PAC_MAN_STATE	5
+
+// тип данных объекта: кординаты и направление движение PAC-GIRL
+#define OBJECT_TYPE_PAC_GIRL_STATE	6
+
+// тип данных объекта: кординаты и направление движение RED
+#define OBJECT_TYPE_RED_STATE		7
+
+// тип данных объекта: конец игры
+#define OBJECT_TYPE_END_GAME		8
+
+// тип данных объекта: пауза
+#define OBJECT_TYPE_PAUSE 			9
+
+// тип данных объекта: продолжение игры
+#define OBJECT_TYPE_RESUME_GAME		10
+
+// тип данных объекта: съели точку
+#define OBJECT_TYPE_EAT_POINT		11
+
+// тип данных объекта: съели поверап
+#define OBJECT_TYPE_EAT_POWERUP		12
+
+// тип данных объекта: съели призрака
+#define OBJECT_TYPE_EAT_SHADOW		13
+
+// тип данных объекта: съели черешню
+#define OBJECT_TYPE_EAT_CHERRY		14
+
+// тип данных объекта: открыть дверь
+#define OBJECT_TYPE_OPEN_DOOR		15
+
+
+// длинна типа данных 'master' - 8 байт, текст: 'Pac-Girl'
+#define MASTER_OBJECT_LENGTH 		8
+
+// длинна типа данных 'slave' - 8 байт, текст: 'Pac-Man!'
+#define SLAVE_OBJECT_LENGHT  		8
+
+// длинна типа данных 'joy' - 2 байта (состояние всех нажатых кнопок на контроллере)
+#define JOY_OBJECT_LENGHT 	 		2
+
+// длинна типа данных 'switch plaers' - 2 байта
+#define SWITCH_PLAYERS_LENGHT 		2
+
+// длинна типа данных 'кординаты и направление движение PAC-MAN' - 4 байта
+#define PAC_MAN_STATE_LENGHT 		4
+
+// длинна типа данных 'кординаты и направление движение PAC-GIRL' - 4 байта
+#define PAC_GIRL_STATE_LENGHT 		4
+
+// длинна типа данных 'кординаты и направление движение RED' - 2 байта
+#define RED_STATE_LENGHT 			2
+
+// длинна типа данных 'конец игры'  - 2 байта
+#define END_GAME_LENGTH				2
+
+// длинна типа данных 'пауза' - 2 байта
+#define PAUSE_LENGTH				2
+
+// длинна типа данных 'продолжение игры' - 2 байта
+#define RESUME_GAME_LENGTH			2
+
+// длинна типа данных 'съели точку' - 2 байта
+#define EAT_POINT_LENGTH			2
+
+// длинна типа данных 'съели поверап' - 2 байта
+#define EAT_POWERUP_LENGTH			2
+
+// длинна типа данных 'съели призрака' - 2 байта
+#define EAT_SHADOW_LENGTH			2
+
+// длинна типа данных 'съели черешню' - 2 байта
+#define EAT_CHERRY_LENGTH			2
+
+// длинна типа данных 'открыть дверь' - 2 байта
+#define OPEN_DOOR_LENGTH			2
+
+
 /**
  * Глобальные переменные
  */
+
+/**
+ * 0 - не объект
+ * 1 OBJECT_TYPE_MASTER 	    - MASTER_OBJECT_LENGTH  = 8  байт
+ * 2 OBJECT_TYPE_SLAVE  	    - SLAVE_OBJECT_LENGHT   = 8  байт
+ * 3 OBJECT_TYPE_JOY    	    - JOY_OBJECT_LENGHT     = 2  байта
+ * 4 OBJECT_TYPE_SWITCH_PLAYERS - SWITCH_PLAYERS_LENGHT = 2  байта
+ * 5 OBJECT_TYPE_PAC_MAN_STATE  - PAC_MAN_STATE_LENGHT  = 4  байта
+ * 6 OBJECT_TYPE_PAC_GIRL_STATE - PAC_GIRL_STATE_LENGHT = 4  байта
+ * 7 OBJECT_TYPE_RED_STATE      - RED_STATE_LENGHT 	    = 2  байта
+ * 8 OBJECT_TYPE_END_GAME       - END_GAME_LENGTH		= 2  байта
+ * 9 OBJECT_TYPE_PAUSE          - PAUSE_LENGTH			= 2  байта
+ *10 OBJECT_TYPE_RESUME_GAME    - RESUME_GAME_LENGTH	= 2  байта
+ *11 OBJECT_TYPE_EAT_POINT      - EAT_POINT_LENGTH		= 2  байта
+ *12 OBJECT_TYPE_EAT_POWERUP    - EAT_POWERUP_LENGTH    = 2  байта
+ *13 OBJECT_TYPE_EAT_SHADOW     - EAT_SHADOW_LENGTH	    = 2  байта
+ *14 OBJECT_TYPE_EAT_CHERRY     - EAT_CHERRY_LENGTH     = 2  байта
+ *15 OBJECT_TYPE_OPEN_DOOR      - OPEN_DOOR_LENGTH		= 2  байта
+ *
+ * Массив содержащий размеры передаваемых через SEGA_LINK_CABLE объектов
+ * т.к. протакол за раз передает 2 байта (16 бит) нет смысла иметь объекты размером не кратные двум байтам
+ * всеравно будет передано минимум 2 байта, но опребелять такие тоже можно!
+ * используется как последний параметр функций LCP_objectToPacketForSend() и LCP_getNextObjectFromRecivePacket()
+ * протокол не знает размеры ваших объектов, вот ему и надо их передавать!
+ */
+u16 LINK_TYPES_LENGHT[] = {
+							0, MASTER_OBJECT_LENGTH, SLAVE_OBJECT_LENGHT, JOY_OBJECT_LENGHT, SWITCH_PLAYERS_LENGHT, PAC_MAN_STATE_LENGHT,
+							   PAC_GIRL_STATE_LENGHT, RED_STATE_LENGHT, END_GAME_LENGTH, PAUSE_LENGTH, RESUME_GAME_LENGTH,
+							   EAT_POINT_LENGTH, EAT_POWERUP_LENGTH, EAT_SHADOW_LENGTH, EAT_CHERRY_LENGTH, OPEN_DOOR_LENGTH
+						  };
 
 // карта игры
 u8 map[MAP_SIZE_Y][MAP_SIZE_X] = {
@@ -226,19 +330,79 @@ u8 map[MAP_SIZE_Y][MAP_SIZE_X] = {
  "1xxxxxxxxxxxxxxxxxxxxxxxxxxxxx3"
  };
 
+// режим работы приставки с вторым портом для контроллероллера
+// MODE_PORT2_UNKNOWN 		0 - не известно есть ли соединение между приставками через SEGA Link Cable и воткнут ли в 2 порт контроллер
+// MODE_PORT2_MASTER  		1 - master наша приставка ведущая (сначала передает данные затем читает данные через SEGA Link cable)
+// MODE_PORT2_SLAVE   		2 - slave наша приставка ведомая (сначала читает данные затем передает данные через SEGA Link cable)
+// MODE_MULTY_PLAYER	 	3 - multiplayer в втором порту 3 или 6 кнопочний контроллер, нет соединения через SEGA Link cable
+// MODE_SINGLE_PLAYER		4 - singlepayer нет соединения между приставками и в втором порту ничего не подключено
+u8 controllerPort2Mode = MODE_PORT2_UNKNOWN;
+
 // для обработки нажатия кнопок первым игроком на контроллере
 u16 pad1 = 0;
 
 // для обработки нажатия кнопок вторым игроком на контроллере
 u16 pad2 = 0;
 
-// режим работы приставки с портами контроллеров
-// MODE_PORT2_UNKNOWN 		0 - не известно есть ли соединение между приставками через SEGA Link Cable и воткнут ли в 2 порт контроллер
-// MODE_PORT2_MASTER  		1 - master наша приставка ведущая (сначала передает данные затем читает данные через SEGA Link cable)
-// MODE_PORT2_SLAVE   		2 - slave наша приставка ведомая (сначала читает данные затем передает данные через SEGA Link cable)
-// MODE_MULTY_PLAYER	 	3 - multiplayer в втором порту 3 или 6 кнопочний контроллер, нет соединения через SEGA Link cable
-// MODE_SINGLE_PLAYER		4 - singlepayer нет соединения между приставками и в втором порту ничего не подключено
-u8 controllerPort2Mode = 0;
+// SHOW_LINK_CABLE_NO - ничего не показывать
+// SHOW_LINK_CABLE_LAST_ERROR - показывать ошибки происходящие при передаче данных через Link Cable при нажатии A + C
+// SHOW_LINK_CABLE_ERROS_COUNT - показывать количество ошибок происходящие при передаче данных через Link Cable при нажатии B + C
+// SHOW_LINK_CABLE_FRAME_COUNT - показывать количество отресованных фреймов с начала создания соединения, при нажании A + X
+u8 showLinkCableErrors = SHOW_LINK_CABLE_NO;
+
+// ошибка которая произошла при передаче данных через Link cable, выводим на экран при нажатии A + C
+u16 linkCableErrors = 0;
+
+// количество ошибок при передаче через Link cable, выводим на экран при нажании B + C
+u16 linkCableErrorsCount = 0;
+
+// количество отресованных фреймов с начала создания соединения, выводим на экран при нажании A + X
+u16 linkCableFrameCount = 0;
+
+
+// какой игрок каким персонажем играет
+// если switchPlayers == P1_PACMAN__P2_PACGIRL при игре через Link cable, master - Pac-Man, slave - Pac-Girl. При игре на одной
+// приставке первый игрок - Pac-Man, второй игрок - Pac-Girl.
+// если switchPlayers == 1 при игре через Link cable, master - Pac-Girl, slave - Pac-Man. При игре на одной
+// приставке первый игрок - Pac-Girl, второй игрок - Pac-Man.
+// Чтоб изменить кто кем будет играть, нужно выбрать в меню выбора игроков '2 PLAYRS' и нажать
+// на любом из контроллеров ВПРАВО switchPlayers = 1 и ВЛЕВО чтоб switchPlayers = 0
+u8 switchPlayers = P1_PACMAN__P2_PACGIRL;
+
+// содержит объект в виде байтового массива который собираемся передать через SEGA Link Cable
+// другой приставке и должен быть размером >= наибольшего размера из типов данных объектов
+u8 transferObject[MASTER_OBJECT_LENGTH + 1];
+
+// текст 'ВЕДУЩАЯ ПРИСТАВКА'     ('LINK MASTER') - игра на двух приставках через Link cable мы ведущая приставка (controllerPort2Mode = MODE_PORT2_MASTER)
+const u8 TEXT_LINK_MASTER[GAME_MODE_TEXT_SIZE] = "LINK MASTER";
+
+// текст 'ВЕДОМАЯ ПРИСТАВКА'     ('LINK  SLAVE') - игра на двух приставках через Link cable мы ведомая приставка (controllerPort2Mode = MODE_PORT2_SLAVE)
+const u8 TEXT_LINK_SLAVE[GAME_MODE_TEXT_SIZE] =  "LINK  SLAVE";
+
+// текст '1 ИГРОК НЕ СЕТЕВАЯ!'   ('1P NO LINK!') - игра на одной приставке, во втором порту ни чего не обнаружено (controllerPort2Mode = MODE_SINGLE_PLAYER)
+const u8 TEXT_1P_NO_LINK[GAME_MODE_TEXT_SIZE] =  "1P NO LINK!";
+
+// текст '2 ИГРОКА НЕ СЕТЕВАЯ!'  ('2P NO Link!') - игра на одной приставке на двух контроллерах (controllerPort2Mode = MODE_MULTY_PLAYER)
+const u8 TEXT_2P_NO_LINK[GAME_MODE_TEXT_SIZE] =  "2P NO Link!";
+
+// текст 'ПЫТАЕМСЯ БЫТЬ ВЕДУЩЕЙ' ('TRY MASTER!') - пытаемся стать ведущей приставкой, предполагаем что во втором порту Link cable
+const u8 TEXT_TRY_MASTER[GAME_MODE_TEXT_SIZE] =  "TRY MASTER!";
+
+// текст 'ПЫТАЕМСЯ БЫТЬ ВЕДОМОЙ' ('TRY  SLAVE!') - пытаемся стать ведомой приставкой, предполагаем что во втором порту Link cable
+const u8 TEXT_TRY_SLAVE[GAME_MODE_TEXT_SIZE] = 	 "TRY  SLAVE!";
+
+// для вывода на экран в виде текста режима работы приставки с учетом того что воткнуто в 2 порт приставки
+// '1P NO LINK!' (TEXT_1P_NO_LINK)  игра на одной приставке, во втором порту ни чего не обнаружено (controllerPort2Mode = MODE_SINGLE_PLAYER)
+// '2P NO Link!' (TEXT_2P_NO_LINK)  игра на одной приставке на двух контроллерах (controllerPort2Mode = MODE_MULTY_PLAYER)
+// 'TRY MASTER!' (TEXT_TRY_MASTER)  пытаемся стать ведущей приставкой, предполагаем что во втором порту Link cable
+// 'TRY  SLAVE!' (TEXT_TRY_SLAVE)   пытаемся стать ведомой приставкой, предполагаем что во втором порту Link cable
+// 'LINK MASTER' (TEXT_LINK_MASTER) игра на двух приставках через Link cable мы ведущая приставка (controllerPort2Mode = MODE_PORT2_MASTER)
+// 'LINK  SLAVE' (TEXT_LINK_SLAVE)  игра на двух приставках через Link cable мы ведомая приставка (controllerPort2Mode = MODE_PORT2_SLAVE)
+// '           ' не известно есть ли соединение между приставками и что воткнуто в 2 порт (controllerPort2Mode = MODE_PORT2_UNKNOWN)
+char gameModeText[GAME_MODE_TEXT_SIZE + 1];
+
+// тип объекта передаваемого через Link Cable Protocol
+u16 objectType = 0;
 
 // переменная для отрисовки текстовой информации
 // очки, бонусы, GAME OVER, YOU WINNER
@@ -439,51 +603,6 @@ s16 sonicY = 83;
 // скорость перемещения Соника
 s16 dxSonic = 1;
 
-// показывать ошибки происходящие при передаче данных через Link Cable
-u8 showLinkCableErrors = SHOW_LINK_CABLE_NO;
-
-// ошибка которая произошла при передаче данных через Link cable
-u16 linkCableErrors = 0;
-
-// количество ошибок при передаче через Link cable
-u16 linkCableErrorsCount = 0;
-
-// количество отресованных фреймов с начала создания соединения
-u16 linkCableFrameCount = 0;
-
-
-// какой игрок каким персонажем играет
-// если switchPlayers == 0 при игре через Link cable, master - Pac-Man, slave - Pac-Girl. При игре на одной
-// приставке первый игрок - Pac-Man, второй игрок - Pac-Girl.
-// если switchPlayers == 1 при игре через Link cable, master - Pac-Girl, slave - Pac-Man. При игре на одной
-// приставке первый игрок - Pac-Girl, второй игрок - Pac-Man.
-// Чтоб изменить кто кем будет играть, нужно выбрать в меню выбора игроков '2 PLAYRS' и нажать
-// на любом из контроллеров ВПРАВО switchPlayers = 1 и ВЛЕВО чтоб switchPlayers = 0
-u8 switchPlayers = 0;
-
-// содержит объект в виде байтового массива который собираемся передать через SEGA Link Cable
-// другой приставке и должен быть размером >= наибольшего размера из типов данных объектов
-u8 transferObject[GAME_STATE_OBJECT_LENGHT + 1];
-
-// для вывода на экран в виде текста режима работы приставки с учетом того что воткнуто в 2 порт приставки
-// '1P NO LINK!' игра на одной приставке, во втором порту ни чего не обнаружено (controllerPort2Mode = MODE_SINGLE_PLAYER)
-// '2P NO Link!' игра на одной приставке на двух контроллерах (controllerPort2Mode = MODE_MULTY_PLAYER)
-// 'TRY MASTER!' пытаемся стать ведущей приставкой, предполагаем что во втором порту Linc cable
-// 'TRY  SLAVE!' пытаемся стать ведомой приставкой, предполагаем что во втором порту Linc cable
-// 'LINK MASTER' игра на двух приставках через Link cable мы ведущая приставка (controllerPort2Mode = MODE_PORT2_MASTER)
-// 'LINK  SLAVE' игра на двух приставках через Link cable мы ведомая приставка (controllerPort2Mode = MODE_PORT2_SLAVE)
-// '           ' не известно есть ли соединение между приставками и что воткнуто в 2 порт (controllerPort2Mode = MODE_PORT2_UNKNOWN)
-char gameModeText[GAME_MODE_TEXT_LENGHT + 1];
-
-/**
- * 0 - не объект
- * длинна типа данных MASTER_OBJECT_LENGTH	    = 8  байт
- * длинна типа данных SLAVE_OBJECT_LENGHT 		= 8  байт
- * длинна типа данных JOY_OBJECT_LENGHT    		= 2  байта
- * длинна типа данных GAME_STATE_OBJECT_LENGHT 	= 34 байта
- * длинна типа данных SWITCH_PLAYERS_LENGHT		= 2  байта
- */
-u16 LINK_TYPES_LENGHT[] = {0, MASTER_OBJECT_LENGTH, SLAVE_OBJECT_LENGHT, JOY_OBJECT_LENGHT, GAME_STATE_OBJECT_LENGHT, SWITCH_PLAYERS_LENGHT};
 
 /**
  * Функции
@@ -516,21 +635,44 @@ void masterToTransferObject();
 void slaveToTransferObject();
 
 /**
- * Создаем объект состояния игры в байтовом массиве transferObject для передачи по Link Cable
- * от ведущей приставки (master) ведомой приставке (slave)
+ * Сохраняем dx, dy, pacmanX, pacmanY, oldX, oldY в байтовом массиве transferObject
+ * для передачи другой приставке в виде объекта OBJECT_TYPE_PAC_MAN_STATE
  */
-void gameStateToTransferObject();
+void pacManStateToTransferObject();
 
 /**
- * Восстанавливаем состояние игры из полученного по Link Cable объекта
- * сразу в переменные отвечающие за состояние игры
- * на ведомой приставке (slave) из того что получили от ведущей (master)
+ * Получаем dx, dy, pacmanX, pacmanY , oldX, oldY из байтовового массива transferObject
+ * в случае если получили от другой приставки объект OBJECT_TYPE_PAC_MAN_STATE
  */
-void refreshGameStateFromTransferObject();
+void pacManStateFromTransferObject();
+
+/**
+ * Сохраняем dxPacGirl, dyPacGirl, pacGirlX, pacGirlY, oldPacGirlX, oldPacGirlY байтовом массиве transferObject
+ * для передачи другой приставке в виде объекта OBJECT_TYPE_PAC_GIRL_STATE
+ */
+void pacGirlStateToTransferObject();
+
+/**
+ * Получаем dxPacGirl, dyPacGirl, pacGirlX, pacGirlY из байтовового массива transferObject
+ * в случае если получили от другой приставки объект OBJECT_TYPE_PAC_GIRL_STATE
+ */
+void pacGirlStateFromTransferObject();
+
+/**
+ * Сохраняем dxRed, dyRed, redX, redY, redFlag байтовом массиве transferObject
+ * для передачи другой приставке в виде объекта OBJECT_TYPE_RED_STATE
+ */
+void redStateToTransferObject();
+
+/**
+ * Получаем dxRed, dyRed, redX, redY, redFlag из байтовового массива transferObject
+ * в случае если получили от другой приставки объект OBJECT_TYPE_RED_STATE
+ */
+void redStateFromTransferObject();
 
 /**
  * В transferObject сохраняем объект содержащий информацию что было нажато на первом контроллере
- * нашей приставки
+ * нашей приставки для передачи другой приставке в виде объекта OBJECT_TYPE_JOY
  *
  * pad - информация о том что было нажато на контроллере
  */
@@ -538,29 +680,11 @@ void padToTransferObject(u16 pad);
 
 /**
  * Из объекта что лежит в transferObject переданного через Link Cable получаем информацию что было нажато
- * на первом контроллере другой приставки
+ * на первом контроллере другой приставки в случае если получили от другой приставки объект OBJECT_TYPE_JOY
  *
  * return информация о том что было нажато на контроллере
  */
 u16 getPadFromTransferObject();
-
-/**
- * SEGA
- *
- * Звуки на ведомой приставке (slave) при поедании Pac-Man или Pac-Girl еды, поверапа, черешни
- *
- * val - что было съедено
- */
-void soundForSlave(u8 val);
-
-/**
- * SEGA
- *
- * Обновить карту, состояние персонажей, проиграть звуки событий
- * игры у 2 игрока на ведомой приставке (slave) при сетевой игре
- * на основе полученных данных по SEGA Link Cable от ведущей приставки (master)
- */
-void refreshSlaveGame();
 
 /**
  * SEGA
@@ -583,7 +707,7 @@ void calcScore();
  * j - столбец в массиве карты
  * return val = 1 - не стена, 0 - стена
  */
-u8 isNotWell(s16 y, s16 x);
+u8 isNotWall(s16 y, s16 x);
 
 /**
  * Клетка по заданным координатам не стена и не дверь (WALL, DOOR)
@@ -591,7 +715,7 @@ u8 isNotWell(s16 y, s16 x);
  * x - координата X на карте (map[][])
  * return val = 1 - не стена и не дверь, 0 - стена или дверь
  */
-u8 isNotWellOrDoor(s16 y, s16 x);
+u8 isNotWallOrDoor(s16 y, s16 x);
 
 /**
  * Корректировка координат PAC-MAN, PAC-GIRL или Призрака
@@ -618,7 +742,7 @@ void closeDoors();
  * начальное положение персонажей
  * где будет еда и поверапы
  */
-void init();
+void resetGame();
 
 /**
  * Съедена еда
@@ -631,7 +755,7 @@ void incFood();
  * SEGA
  *
  * Проиграл ли PACMAN или он мог съесть призрака
- * и что съел на месте призрака
+ * и что было съеедено на месте призрака PACMAN или PACGIRL
  */
 u8 pacmanLooser();
 
@@ -787,9 +911,49 @@ void initScreensaver();
  * SEGA
  *
  * отображаем заставку
- * SEGA которую съест Pac-Man и Pac-Girl
+ * Sonic убегающий от Pac-Man и надпись SEGA которую съест Pac-Man и Pac-Girl
+ * затем Pac-Man убегает от призрака
  */
 void screensaver();
+
+
+/**
+ * SEGA
+ *
+ * Перевести игру в режим паузы
+ */
+void pause();
+
+
+/**
+ * SEGA
+ *
+ * Выходим из паузы, т.е. меняем состояние на продолжение игры
+ */
+void resumeGame();
+
+/**
+ * SEGA
+ *
+ * Играем на двух приставках и наша ведущая (master) приставка
+ * отправляем ведомой (slave) приставке что было нажато нажато на нашем контроллере
+ * в случае смены персонажей при выборе количества игроков, шлем кто за какого игрока играет
+ * а так же шлем все объекты пакета которые еще не были отправлены
+ * затем разбераем что было получено от ведомой (slave) приставки а точнее что было нажато на контролере
+ * другой приставки
+ */
+void masterControls();
+
+/**
+ * SEGA
+ *
+ * Играем на двух приставках и наша ведомая (slave) приставка
+ * сохраняем в пакет для отправки ведущей (master) приставке что было нажато нажато на нашем контроллере
+ * пакет будет отправлен асинхронно при наступлении внешнего прерывания инициируемого ведущей (master) приставкой
+ * в случайный момент времени для нашей приставки (обработчик внешнего прерывания - функция LCP_slaveCycle() из библиотеки link_cable.c)
+ * разбераем что было получено от ведущей (master) приставки при прошлом вызове внешнего прерывания (LCP_slaveCycle())
+ */
+void slaveControls();
 
 /**
  * SEGA
@@ -819,5 +983,33 @@ void controls();
  */
 u8 winner();
 
+/**
+ * SEGA
+ *
+ * Инициализация звуковых эффектов
+ */
+void initSound();
 
+/**
+ * SEGA
+ *
+ * Установка палитр
+ */
+void  initPaletts();
+
+/**
+ * SEGA
+ *
+ * Инициализация спрайтов
+ *
+ */
+void initSprites();
+
+/**
+ * SEGA
+ *
+ * Инициализация и сброс переменных в значения по умолчанию
+ * тут нужно также сбрасывать переменные после soft reset (нажатия на кнопку RESET)
+ */
+void initGame();
 
