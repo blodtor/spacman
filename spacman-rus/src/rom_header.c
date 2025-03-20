@@ -1,4 +1,4 @@
-#include "genesis.h"
+#include <genesis.h>
 
 __attribute__((externally_visible))
 const ROMHeader rom_header = {
@@ -9,9 +9,9 @@ const ROMHeader rom_header = {
 #else
     "SEGA MEGA DRIVE ",
 #endif
-    "(C)SGDK 2023    ",
-    "SUPER TURBO MEGA PAC-MAN                        ",
-    "SUPER TURBO MEGA PAC-MAN                        ",
+    "(C)SGDK 2025    ",
+    "SUPER TURBO MEGA PAC-MAN v2.12 SGDK 2.12 2025 RU",
+    "SUPER TURBO MEGA PAC-MAN v2.12 SGDK 2.12 2025 RU",
     "GM 00000000-00",
     0x000,
     "JD              ",

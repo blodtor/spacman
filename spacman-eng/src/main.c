@@ -1,432 +1,489 @@
 /**
- * Super Turbo MEGA Pac-Man 2.0 для Sega Mega Drive / Sega Genesis
- * для разработки использовал SGDK 1.90 (July 2023)
- * 
- * сборка из под Linux
+ * Super Turbo MEGA Pac-Man v2.12
+ * Pac-Man for Sega Mega Drive / Sega Genesis
+ *
+ * Two-player game, including network play capability on two consoles
+ * via SEGA Link Cable (Zero Tolerance Link Cable), connected to the second port.
+ *
+ * You can see what SEGA Link Cable is using Zero Tolerance and Super Turbo MEGA Pac-Man as examples here:
+ * https://youtu.be/aLk8tDrjZ50
+ *
+ * For this game, SEGA Link Cable Protocol (LCP) was implemented - a protocol for data exchange via SEGA Link Cable
+ * between two Sega Mega Drive / Sega Genesis consoles. This is a C programming language library for SGDK 2.12.
+ *
+ * Game description:
+ * 1st player controls Pac-Man, who is chased by 1 red-colored ghost.
+ * If the ghost catches Pac-Man - the game will end.
+ * If Pac-Man or Pac-Girl eat a green dot, the ghost will become
+ * purple-colored and start running away from Pac-Man, as now it can be eaten itself.
+ * 2nd player controls Pac-Girl. She helps collect dots on the level, while
+ * neither Pac-Man nor the ghost can eat Pac-Girl, and she can't eat them (immortal).
+ * The game will end in victory if players can collect all food (white and green dots) on the level.
+ * In the ghost house, a cherry appears after some time - it just gives points,
+ * to win, you don't have to eat it!
+ * In the player count selection menu, you can choose which character each player will control
+ * when playing together. To do this, press right in the '2 PLAYERS' menu so the first player
+ * controls Pac-Girl, and the second player controls Pac-Man, or left to return to default settings.
+ *
+ * More about the project here:
+ * https://www.youtube.com/watch?v=DN2u24B_XL0
+ *
+ * Building from Linux:
  * > ./compile.sh
  *
- * собирать с помащью Docker (в папке /opt/SGDK должен лежать development kit для Sega Mega Drive / Sega Genesis)
- * > cd /opt/SGDK
- * > docker build -t sgdk .
- * > cd [папка где лежит проект]/spacman
- * > docker run --rm -v "$PWD":/src sgdk
+ * The compiled game ROM will be here:
+ * [project folder]/spacman/spacman-eng/out/rom.bin
  *
- * собранный ROM игры будет тут:
- * [папка где лежит проект]/spacman/out/rom.bin
- * 
- * SGDK - свободный и открытый development kit для Sega Mega Drive / Sega Genesis
+ * SGDK - free and open source development kit for Sega Mega Drive / Sega Genesis
  * https://github.com/Stephane-D/SGDK.git
  *
- * SGDK_wine - Wine wrapper скрипт генерирующий /opt/SGDK/makefile_wine.gen для SGDK чтоб использовать его в Linux
+ * SGDK_wine - Wine wrapper script that generates /opt/SGDK/makefile_wine.gen for SGDK to use it in Linux
  * https://github.com/Franticware/SGDK_wine.git
  *
- * Gens - это Sega Mega Drive / Sega Genesis / Sega CD / Sega 32X эмулятор для Windows и Linux.
- * http://www.gens.me/
- *
- * Разрешение у Sega Genesis / Sega Megadrive - 320 x 240 
- * 
- * BlodTor 2025 г.
+ * BlodTor 2025
  */
 
 #include <genesis.h>
 
 #include "main.h"
 #include "resources.h"
-#include "link_cable.h"
+
+#if (MODULE_LINK_CABLE == 0)
+#error "Set MODULE_LINK_CABLE to 1 in config.h and rebuild the library"
+#endif
 
 /**
- * Создаем объект для синхронизации приставок через Link Cable Protocol: OBJECT_TYPE_MASTER
- * в байтовом массиве transferObject
+ * Create synchronization object for consoles via Link Cable Protocol: OBJECT_TYPE_MASTER
+ * in byte array transferObject
  *
- * Фраза может быть любая, если ее получит другая приставка то она
- * будет ведомая (slave) и на экране будет отражено "LINK  SLAVE" у другого игрока.
+ * The phrase can be any, if another console receives it, then it
+ * will become slave, and the screen will display "LINK  SLAVE" for the other player.
  *
- * Наша станет ведущей (master) при работе через Link Cable Protocol
- * на экране будет фраза "LINK MASTER" в свою очередь мы получаем от другой приставки
- * другой бъект синхронизации OBJECT_TYPE_SLAVE с другой фразой "Pac-Man!"
+ * Ours will become master when working via Link Cable Protocol,
+ * the screen will display "LINK MASTER", in turn we receive from the other console
+ * another synchronization object OBJECT_TYPE_SLAVE with a different phrase "Pac-Man!"
  */
 void masterToTransferObject() {
 	memcpy(transferObject, "Pac-Girl", MASTER_OBJECT_LENGTH);
 }
 
+
 /**
- * Создаем объект для синхронизации приставок через Link Cable Protocol: OBJECT_TYPE_SLAVE
- * в байтовом массиве transferObject
+ * Create synchronization object for consoles via Link Cable Protocol: OBJECT_TYPE_SLAVE
+ * in byte array transferObject
  *
- * Фраза может бфть любая, если ее получит другая приставка то она
- * будет ведущая (master) и на экране будет отражено "LINK MASTER" у другого игрока.
+ * The phrase can be any, if another console receives it, then it
+ * will become master, and the screen will display "LINK MASTER" for the other player.
  *
- * Наша станет ведомой (slave) при работе через Link Cable Protocol
- * на экране будет фраза "LINK  SLAVE" в свою очередь мы получаем от другой приставки
- * другой бъект синхронизации OBJECT_TYPE_MASTER с другой фразой "Pac-Girl"
+ * Ours will become slave when working via Link Cable Protocol,
+ * the screen will display "LINK  SLAVE", in turn we receive from the other console
+ * another synchronization object OBJECT_TYPE_MASTER with a different phrase "Pac-Girl"
  */
 void slaveToTransferObject() {
-	memcpy(transferObject, "Pac-Man!", SLAVE_OBJECT_LENGHT);
+	memcpy(transferObject, "Pac-Man!", SLAVE_OBJECT_LENGTH);
 }
 
+
 /**
- * Создаем объект состояния игры в байтовом массиве transferObject для передачи по Link Cable
- * от ведущей приставки (master) ведомой приставке (slave)
+ * Save dx, dy, pacmanX, pacmanY, oldX, oldY in byte array transferObject
+ * for transmission to another console as OBJECT_TYPE_PAC_MAN_STATE object
  */
-void gameStateToTransferObject() {
-	transferObject[0] = pacmanX;
-	transferObject[1] = pacmanY;
+void pacManStateToTransferObject() {
+	transferObject[0] = 0;
+	if (dx > 0) {
+		// if moving right, bit 6 = 1
+		transferObject[0] = 0b01000000;
+	} else if (dx < 0) {
+		// if moving left, bit 7 = 1
+		transferObject[0] = 0b10000000;
+	}
+
+	// pacmanX has value from 0 to 31 i.e. 11111 in binary
+	transferObject[0]+= pacmanX;
+
+	transferObject[1] = 0;
+	if (dy > 0) {
+		// if moving down, bit 6 = 1
+		transferObject[1] = 0b01000000;
+	} else if (dy < 0) {
+		// if moving up, bit 7 = 1
+		transferObject[1] = 0b10000000;
+	}
+
+	// pacmanY has value from 0 to 22 i.e. 10100 in binary
+	transferObject[1]+= pacmanY;
+
+	// old Pac-Man x coordinates
 	transferObject[2] = oldX;
+
+	// old Pac-Man y coordinates
 	transferObject[3] = oldY;
-	transferObject[4] = dx;
-	transferObject[5] = dy;
-	transferObject[6] = redX;
-	transferObject[7] = redY;
-	transferObject[8] = oldXRed;
-	transferObject[9] = oldYRed;
-	transferObject[10] = dxRed;
-	transferObject[11] = dyRed;
-	transferObject[12] = pacGirlX;
-	transferObject[13] = pacGirlY;
-	transferObject[14] = oldPacGirlX;
-	transferObject[15] = oldPacGirlY;
-	transferObject[16] = dxPacGirl;
-	transferObject[17] = dyPacGirl;
-	transferObject[18] = cherryX;
-	transferObject[19] = cherryY;
-	transferObject[20] = doorX;
-	transferObject[21] = doorY;
-	transferObject[22] = redFlag;
-	transferObject[23] = redBonus;
-	transferObject[24] = powerBonus;
-	transferObject[25] = cherryBonus;
-	transferObject[26] = food001;
-	transferObject[27] = food010;
-	transferObject[28] = food100;
-	transferObject[29] = map[doorY][doorX];
-	transferObject[30] = map[cherryY][cherryX];
-	transferObject[31] = oldRedVal;
-	transferObject[32] = gameState;
 }
 
+
 /**
- * Восстанавливаем состояние игры из полученного по Link Cable объекта
- * сразу в переменные отвечающие за состояние игры
- * на ведомой приставке (slave) из того что получили от ведущей (master)
+ * Get dx, dy, pacmanX, pacmanY, oldX, oldY from byte array transferObject
+ * in case we received OBJECT_TYPE_PAC_MAN_STATE object from another console
  */
-void refreshGameStateFromTransferObject() {
-	pacmanX = transferObject[0];
-	pacmanY = transferObject[1];
+void pacManStateFromTransferObject() {
+	if (transferObject[0] & 0b01000000) {
+		// if bit 6 = 1, then moving right
+		dx = 1;
+	} else if (transferObject[0] & 0b10000000) {
+		// if bit 7 = 1, then moving left
+		dx = -1;
+	} else {
+		// otherwise standing still
+		dx = 0;
+	}
+
+	// in bits 0-5 value where PAC-MAN is located by X
+	pacmanX = transferObject[0] & 0b00111111;
+
+	if (transferObject[1] & 0b01000000) {
+		// if bit 6 = 1, then moving down
+		dy = 1;
+	} else if (transferObject[1] & 0b10000000) {
+		// if bit 7 = 1, then moving up
+		dy = -1;
+	} else {
+		// otherwise standing still
+		dy = 0;
+	}
+
+	// in bits 0-5 value where PAC-MAN is located by Y
+	pacmanY = transferObject[1] & 0b00111111;
+
+	// old Pac-Man x coordinates
 	oldX = transferObject[2];
+
+	// old Pac-Man y coordinates
 	oldY = transferObject[3];
-	dx = transferObject[4];
-	dy = transferObject[5];
-	redX = transferObject[6];
-	redY = transferObject[7];
-	oldXRed = transferObject[8];
-	oldYRed = transferObject[9];
-	dxRed = transferObject[10];
-	dyRed = transferObject[11];
-	pacGirlX = transferObject[12];
-	pacGirlY = transferObject[13];
-	oldPacGirlX = transferObject[14];
-	oldPacGirlY = transferObject[15];
-	dxPacGirl = transferObject[16];
-	dyPacGirl = transferObject[17];
-	cherryX = transferObject[18];
-	cherryY = transferObject[19];
-	doorX = transferObject[20];
-	doorY = transferObject[21];
-	redFlag = transferObject[22];
-	redBonusVal = transferObject[23];
-	powerBonus = transferObject[24];
-	cherryBonus = transferObject[25];
-	food001 = transferObject[26];
-	food010 = transferObject[27];
-	food100 = transferObject[28];
-	doorVal = transferObject[29];
-	cherryVal = transferObject[30];
-	oldRedVal = transferObject[31];
-	gameStateMaster = transferObject[32];
+
+
+    if (map[oldY][oldX] != PACGIRL && map[oldY][oldX] != DOOR) {
+    	// if in old coordinates there was no door, then clear value in array
+    	map[oldY][oldX] = EMPTY;
+    }
+
+	if(map[pacmanY][pacmanX] != PACGIRL) {
+		// if in current coordinates there is no PACGIRL,
+		// then occupy this cell with PACMAN
+		map[pacmanY][pacmanX] = PACMAN;
+	}
 }
 
+
 /**
- * В transferObject сохраняем объект содержащий информацию что было нажато на первом контроллере
- * нашей приставки
+ * Save dxPacGirl, dyPacGirl, pacGirlX, pacGirlY, oldPacGirlX, oldPacGirlY in byte array transferObject
+ * for transmission to another console as OBJECT_TYPE_PAC_GIRL_STATE object
+ */
+void pacGirlStateToTransferObject() {
+	transferObject[0] = 0;
+	if (dxPacGirl > 0) {
+		// if moving right, bit 6 = 1
+		transferObject[0] = 0b01000000;
+	} else if (dxPacGirl < 0) {
+		// if moving left, bit 7 = 1
+		transferObject[0] = 0b10000000;
+	}
+
+	// pacGirlX has value from 0 to 31, i.e. 11111 in binary
+	transferObject[0]+= pacGirlX;
+
+	transferObject[1] = 0;
+	if (dyPacGirl > 0) {
+		// if moving down, bit 6 = 1
+		transferObject[1] = 0b01000000;
+	} else if (dyPacGirl < 0) {
+		// if moving up, bit 7 = 1
+		transferObject[1] = 0b10000000;
+	}
+
+	// pacGirlY has value from 0 to 22, i.e. 10100 in binary
+	transferObject[1]+= pacGirlY;
+
+	// old Pac-Girl x coordinates
+	transferObject[2] = oldPacGirlX;
+
+	// old Pac-Girl y coordinates
+	transferObject[3] = oldPacGirlY;
+}
+
+
+/**
+ * Get dxPacGirl, dyPacGirl, pacGirlX, pacGirlY from byte array transferObject
+ * in case we received OBJECT_TYPE_PAC_GIRL_STATE object from another console
+ */
+void pacGirlStateFromTransferObject() {
+	if (transferObject[0] & 0b01000000) {
+		// if bit 6 = 1, then moving right
+		dxPacGirl = 1;
+	} else if (transferObject[0] & 0b10000000) {
+		// if bit 7 = 1, then moving left
+		dxPacGirl = -1;
+	} else {
+		// otherwise standing still
+		dxPacGirl = 0;
+	}
+
+	// in bits 0-5 value where PAC-GIRL is located by X
+	pacGirlX = transferObject[0] & 0b00011111;
+
+	if (transferObject[1] & 0b01000000) {
+		// if bit 6 = 1, then moving down
+		dyPacGirl = 1;
+	} else if (transferObject[1] & 0b10000000) {
+		// if bit 7 = 1, then moving up
+		dyPacGirl = -1;
+	} else {
+		// otherwise standing still
+		dyPacGirl = 0;
+	}
+
+	// in bits 0-5 value where PAC-GIRL is located by Y
+	pacGirlY = transferObject[1] & 0b00011111;
+
+	// old PAC-GIRL x coordinates
+	oldPacGirlX = transferObject[2];
+
+	// old PAC-GIRL y coordinates
+	oldPacGirlY = transferObject[3];
+
+    if (map[oldPacGirlY][oldPacGirlX] != DOOR) {
+    	// if in old coordinates there is no door, clear the cell
+    	map[oldPacGirlY][oldPacGirlX] = EMPTY;
+    }
+
+    // in new coordinates display PACGIRL
+	map[pacGirlY][pacGirlX] = PACGIRL;
+}
+
+
+/**
+ * Save dxRed, dyRed, redX, redY, redFlag in byte array transferObject
+ * for transmission to another console as OBJECT_TYPE_RED_STATE object
+ */
+void redStateToTransferObject() {
+	transferObject[0] = 0;
+	if (dxRed > 0) {
+		// if moving right, bit 6 = 1
+		transferObject[0] = 0b01000000;
+	} else if (dxRed < 0) {
+		// if moving left, bit 7 = 1
+		transferObject[0] = 0b10000000;
+	}
+
+	if (redFlag) {
+		// if redFlag == 1, then bit 5 = 1
+		transferObject[0] |= 0b00100000;
+	}
+
+	// redX has value from 0 to 31, i.e. 11111 in binary
+	transferObject[0]+= redX;
+
+	transferObject[1] = 0;
+	if (dyRed > 0) {
+		// if moving down, bit 6 = 1
+		transferObject[1] = 0b01000000;
+	} else if (dyRed < 0) {
+		// if moving up, bit 7 = 1
+		transferObject[1] = 0b10000000;
+	}
+
+	// redY has value from 0 to 22, i.e. 10100 in binary
+	transferObject[1]+= redY;
+}
+
+
+/**
+ * Get dxRed, dyRed, redX, redY, redFlag from byte array transferObject
+ * in case we received OBJECT_TYPE_RED_STATE object from another console
+ */
+void redStateFromTransferObject() {
+	if (transferObject[0] & 0b01000000) {
+		// if bit 6 = 1, then moving right
+		dxRed = 1;
+	} else if (transferObject[0] & 0b10000000) {
+		// if bit 7 = 1, then moving left
+		dxRed = -1;
+	} else {
+		// otherwise standing still
+		dxRed = 0;
+	}
+
+	// in bits 0-5 value where RED is located by X
+	redX = transferObject[0] & 0b00011111;
+
+	if (transferObject[1] & 0b01000000) {
+		// if bit 6 = 1, then moving down
+		dyRed = 1;
+	} else if (transferObject[1] & 0b10000000) {
+		// if bit 7 = 1, then moving up
+		dyRed = -1;
+	} else {
+		// otherwise standing still
+		dyRed = 0;
+	}
+
+	// in bits 0-5 value where RED is located by Y
+	redY = transferObject[1] & 0b00011111;
+
+	if (transferObject[0] & 0b00100000) {
+		// if bit 5 == 1, then ghost is not edible
+		redFlag = 1;
+		if (map[redY][redX] != PACGIRL) {
+			map[redY][redX] = RED;
+		}
+	} else {
+		// otherwise edible
+		redFlag = 0;
+		if (map[redY][redX] != PACGIRL) {
+			map[redY][redX] = SHADOW;
+		}
+	}
+}
+
+
+/**
+ * In transferObject save object containing information about what was pressed on the first controller
+ * of our console for transmission to another console as OBJECT_TYPE_JOY object
  *
- * pad - информация о том что было нажато на контроллере
+ * pad - information about what was pressed on the controller
  */
 void padToTransferObject(u16 pad) {
-	transferObject[0] = pad >> 8;     // старший байт у pad сдвинули в младший байт, т.е. на 8 бит вправо
-	transferObject[1] = pad & 0x00FF; // младший байт из pad в 2 элемент массива что передадим
+	transferObject[0] = pad >> 8;     // high byte of pad shifted to low byte, i.e. 8 bits to the right
+	transferObject[1] = pad & 0x00FF; // low byte from pad to 2nd array element that we will transmit
 }
 
 /**
- * Из объекта что лежит в transferObject переданного через Link Cable получаем информацию что было нажато
- * на первом контроллере другой приставки
+ * From object stored in transferObject transmitted via Link Cable get information about what was pressed
+ * on the first controller of another console in case we received OBJECT_TYPE_JOY object from another console
  *
- * return информация о том что было нажато на контроллере
+ * return information about what was pressed on the controller
  */
 u16 getPadFromTransferObject() {
-	u16 pad = transferObject[0]; // старший байт
-	pad <<= 8;           // подвинули старший байт на место (влево на 8 бит)
-	pad |= transferObject[1];    // младший байт
+	u16 pad = transferObject[0]; // high byte
+	pad <<= 8;                   // moved high byte to its place (left by 8 bits)
+	pad |= transferObject[1];    // low byte
 	return pad;
 }
 
-/**
- * SEGA
- *
- * Звуки на ведомой приставке (slave) при поедании Pac-Man или Pac-Girl еды, поверапа, черешни
- *
- * val - что было съедено
- */
-void soundForSlave(u8 val) {
-	switch(val) {
-		// звук поедания еды
-		case FOOD: 			XGM_startPlayPCM(SFX_SOUND_EAT, 15, SOUND_PCM_CH2);		break;
-		// звук поедания поверапа
-		case POWER_FOOD:	XGM_startPlayPCM(SFX_SOUND_POWERUP, 15, SOUND_PCM_CH1); break;
-		// звук поедания черешни
-		case CHERRY:		XGM_startPlayPCM(SFX_SOUND_CHERRY, 15, SOUND_PCM_CH4); 	break;
-	}
-}
-
 
 /**
  * SEGA
  *
- * Обновить карту, состояние персонажей, проиграть звуки событий
- * игры у 2 игрока на ведомой приставке (slave) при сетевой игре
- * на основе полученных данных по SEGA Link Cable от ведущей приставки (master)
- */
-void refreshSlaveGame() {
-	// возвращаем старое значение на карту где до этого был призрак
-	map[oldYRed][oldXRed] = oldRedVal;
-
-	if (redY == pacmanY && redX == pacmanX) {
-		if (!redFlag) {
-			// Отправляем призрака в дом Приведений
-			redY = 10;
-			redX = 15;
-		}
-
-		// обездвижить призрака
-		dyRed = 0;
-		dxRed = 0;
-	}
-
-	// если есть что съесть в новых координатах надо зфект звука воспроизвести
-	soundForSlave(map[pacmanY][pacmanX]);
-	// в карте обнуляем старую клетку (сели что там было)
-	map[oldY][oldX] = EMPTY;
-	// отмечаем на карте новую позицию PAC-MAn
-	map[pacmanY][pacmanX] = PACMAN;
-	// рисуем на бекграунде черный квадрат (все съедено в старых координатах)
-	drawBlackBox(oldY, oldX);
-
-	// если есть что съесть в новых координатах надо зфект звука воспроизвести
-	soundForSlave(map[pacGirlY][pacGirlX]);
-	// в карте обнуляем старую клетку (сели что там было)
-	map[oldPacGirlY][oldPacGirlX] = EMPTY;
-	// отмечаем на карте новую позицию PAC-GIRL (если там был Pac-Man то его там теперь нет!)
-	map[pacGirlY][pacGirlX] = PACGIRL;
-	// рисуем на бекграунде черный квадрат (все съедено в старых координатах)
-	drawBlackBox(oldPacGirlY, oldPacGirlX);
-
-	if (redFlag) {
-		// призрак гоняется за нами
-		map[redY][redX] = RED;
-	} else {
-		// призрак убегает от нас
-		map[redY][redX] = SHADOW;
-	}
-
-	// на ведущей приставке (master) был съеден призрак если переменные имеют разные значения
-	if (redBonusVal != redBonus) {
-		// сохраняем новое значение бонуса
-		redBonus = redBonusVal;
-		// звук поедания призрака
-		XGM_startPlayPCM(SFX_SOUND_EAT_SHADOW, 15, SOUND_PCM_CH3);
-	}
-
-	// отмечаем на карте дверь
-	map[doorY][doorX] = doorVal;
-	if (doorVal != DOOR) {
-		refreshDoor = 0;
-		// скрываем дверь
-		SPR_setPosition(doorSprite, -90, 100);
-	} else {
-		// рисуем дверь
-		drawSprite(doorY, doorX, DOOR);
-	}
-
-	// отмечаем на карте черешню
-	map[cherryY][cherryX] = cherryVal;
-	if (cherryVal != CHERRY) {
-		refreshCherry = 0;
-		// скрываем черешню
-		SPR_setPosition(cherrySprite, -90, 100);
-	} else {
-	    // рисуем черешню
-    	drawSprite(cherryY, cherryX, CHERRY);
-	}
-
-	if (pacGirlY == pacmanY && pacGirlX == pacmanX) {
-		// если PAC-MAN и PAC-GIRL в одной клетке надо PAC-MAN сразу подвинуть
-		drawSprite(pacmanY, pacmanX, PACMAN);
-	}
-
-	if (pacGirlY == redY && pacGirlX == redX) {
-		// если Призрак и PAC-GIRL в одной клетке надо PAC-GIRL сразу подвинуть
-		drawSprite(pacGirlY, pacGirlX, PACGIRL);
-	}
-
-	if (gameStateMaster == STATE_RESULT && gameState == STATE_GAME) {
-		// от ведущей приставки пришло событие окончания игры
-		// если состояние что наша приставка еще в игре, нужно проиграть звук выигрыша или проигрыша
-
-		// всех обездвиживаем
-		dxRed = 0;
-		dyRed = 0;
-		dx = 0;
-		dy = 0;
-		dxPacGirl = 0;
-		dyPacGirl =0;
-
-		if (winner()) {
-			// звук окончания игры - выиграли
-			XGM_startPlay(victory_vgm);
-		} else {
-			// Pac-Man съели
-			map[pacmanY][pacmanX] = RED;
-			// убрать спрайт Pac-Man с экрана (нас съели)
-			SPR_setPosition(pacmanSprite, -90, 90);
-			// звук окончания игры - проиграли
-			XGM_startPlay(fatality_vgm);
-		}
-
-		// подсчитать набранные очки
-		calcScore();
-
-		// изменяем состояние игры на показ результатов (игра окончена)
-		gameState = STATE_RESULT;
-	}
-}
-
-/**
- * SEGA
- *
- * Определяем режим работы приставки при попытке играть вдвоем
- * смотрим что воткнуто в 2 порт контроллера.
- * Если играем через SEGA Link Cable определяем какая
- * приставка ведущая (master) а какая ведомая (slave)
+ * Determine console operation mode when trying to play together,
+ * check what is connected to controller port 2.
+ * If playing via SEGA Link Cable, determine which
+ * console is master and which is slave
  */
 void initControllerPort2() {
-	// не известно есть ли соединение между приставками
+	// unknown if there is connection between consoles
     controllerPort2Mode = MODE_PORT2_UNKNOWN;
 
-    // заполняем нулями текст типа игры
-    memset(gameModeText, 0, GAME_MODE_TEXT_LENGHT + 1);
+    // fill game type text with zeros
+    memset(gameModeText, 0, GAME_MODE_TEXT_SIZE + 1);
 
-	// определяем что воткнуто в второй порт приставки
+	// determine what is connected to the second console port
 	u8 pad2type = JOY_getJoypadType(JOY_2);
 	if (pad2type == JOY_TYPE_PAD3 || pad2type == JOY_TYPE_PAD6) {
-		// воткнут 3 или 6 кнопочный контроллер во 2 порт приставки
-		controllerPort2Mode = MODE_MULTY_PLAYER;
+		// 3 or 6 button controller connected to port 2 of the console
+		controllerPort2Mode = MODE_MULTI_PLAYER;
 
-		// вывести на экран тип игры Joy1+Joy2 - 2 player играет на контроллере подключенным
-		// в 2 порт нашей же приставки, НЕ через SEGA Link Cable
-		memcpy(gameModeText, "2P NO Link!", GAME_MODE_TEXT_LENGHT);
+		// display game type '2 ИГРОКА НЕ СЕТЕВАЯ! ' - 2 players playing on controller connected
+		// to port 2 of our same console, NOT via SEGA Link Cable
+		memcpy(gameModeText, TEXT_2P_NO_LINK, GAME_MODE_TEXT_SIZE);
 
 		return;
 	} else if (pad2type == JOY_TYPE_UNKNOWN) {
-		// возможно есть соединение через Link cabile
-		u16 objectType = 0;
-		u16 lcpError = 0;
-		// сброс ошибок при передаче данных в 0 которые показываем на экране через Link cabile
+		// reset data transmission errors to 0 that we show on screen via Link cable
 		linkCableErrors = 0;
-		// сброс количества ошибок при передаче данных через Link cabile
+		// reset count of data transmission errors via Link cable
 		linkCableErrorsCount = 0;
-		// сброс количества отресованных фреймов с начала создания соединения через Link cabile
+		// reset count of rendered frames since connection establishment via Link cable
 		linkCableFrameCount = 0;
 
-		memcpy(gameModeText, "TRY MASTER!", GAME_MODE_TEXT_LENGHT);
+		memcpy(gameModeText, TEXT_TRY_MASTER, GAME_MODE_TEXT_SIZE);
 		drawText();
 		SYS_doVBlankProcess();
 
-		// инициализация Link Cable Protocol
+		// Link Cable Protocol initialization
 		LCP_init();
 
-		// в переменную buffer положим объект типа данных OBJECT_TYPE_MASTER фразу "Pac-Girl"
+		// put OBJECT_TYPE_MASTER data type object with phrase "Pac-Girl" into buffer variable
 		masterToTransferObject();
-		// добавляем в пакет для передачи данных созданный объект в переменной buffer
-		LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_MASTER, LINK_TYPES_LENGHT);
+		// add created object from buffer variable to packet for data transmission
+		LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_MASTER, LINK_TYPES_LENGTH);
 
 		do {
-			// пытаемся передать пакет LCP_sendPacket другой приставке
-			// и получить от нее пакет LCP_recivePacke с данными
-			// в качестве ведущей приставки (master)
+			// try to send LCP_sendPacket packet to another console
+			// and receive LCP_ReceivePacke packet with data from it
+			// as master console
 			LCP_masterCycle();
 
-			// если ошибок нет т.е. LCP_error == 0, значит успешно отправили и получили данные от другой приставки
-			// выходим из цикла! Надо смотреть что было получено в LCP_recivePacke! Возможно наша приставка будет ведущей (master)
-			// если ошибка 0x1A - значит другая приставка вообще не пыталась получать и отправлять данные,
-			// выходим из цикла и будем пытаться стать ведомой приставкой (slave)
-			// если любая другая ошибка - значит вторая приставка пыталась отправлять и получать данные, надо
-			// попытаться обменятся данными еще раз!
+			// if no errors, i.e. LCP_error == 0, means successfully sent and received data from another console,
+			// exit the loop! Need to check what was received in LCP_ReceivePacke! Possibly our console will be master
+			// if error 0x1A - means another console didn't try to receive and send data at all,
+			// exit the loop and try to become slave console
+			// if any other error - means second console tried to send and receive data, need
+			// to try to exchange data again!
 
-			lcpError = LCP_getError();
-		} while (!( lcpError == 0x1A || lcpError == 0));
+			linkCableErrors = LCP_getError();
+		} while (!( linkCableErrors == 0x1A || linkCableErrors == 0));
 
-		// если ошибок при передачи и получении пакетов небыло
-		// то LCP_getNextObjectFromRecivePacket() вернет объект полученный от другой приставки
-		while ((objectType = LCP_getNextObjectFromRecivePacket(transferObject, LINK_TYPES_LENGHT))) {
+		// if there were no errors in packet transmission and reception,
+		// then LCP_getNextObjectFromReceivePacket() will return object received from another console
+		while ((objectType = LCP_getNextObjectFromReceivePacket(transferObject, LINK_TYPES_LENGTH))) {
 
-			// Проверка что получили от другой приставки OBJECT_TYPE_SLAVE с фразой 'Pac-Man!'
+			// Check that we received OBJECT_TYPE_SLAVE with phrase 'Pac-Man!' from another console
 			if (objectType == OBJECT_TYPE_SLAVE && LCP_getError() == 0) {
-				// Наша приставка становется ведущей (master)
-				// это значит далее при взаимодействии мы вызываем внешннее прерывание - External interrupt (EX-INT)
-				// у дрогой приставки т.к. она будет ведомой (slave) отправляем пакет а затем получаем пакет.
-				// теперь отправка и получение пакетов на нашей приставке с помащью метода LCP_masterCycle()
-				// на нашей приставке не будет вызыватся внешннее прерывание работаем синхронно из основного кода игры
-				// метода controls() в котором и формируем пакет и отправляем и получаем пакет от другой приставки
+				// Our console becomes master
+				// this means further during interaction we call external interrupt - External interrupt (EX-INT)
+				// on another console, since it will be slave we send packet, then receive packet.
+				// now packet sending and reception on our console using LCP_masterCycle() method
+				// on our console will not trigger external interrupt, we work synchronously from main game code
+				// in controls() method, where we form packet, send, and receive packet from another console
 				controllerPort2Mode = MODE_PORT2_MASTER;
 
-				// вывести на экран тип игры 'Pac-Man!' - 2 player при этом играет на контроллере подключенным
-				// в 1 порт другой приставки через SEGA Link Cable воткнутый во 2 порт обоих приставок
+				// display game type 'Pac-Man!' - 2 players playing on controller connected
+				// to port 1 of another console via SEGA Link Cable connected to port 2 of both consoles
 
-				memcpy(gameModeText, "LINK MASTER", GAME_MODE_TEXT_LENGHT);
+				memcpy(gameModeText, TEXT_LINK_MASTER, GAME_MODE_TEXT_SIZE);
 
-				// звук удалось создать соединение по Link cabile
+				// sound that connection via Link cable was successfully created
 				XGM_startPlayPCM(SFX_SOUND_CONNECT_LINK_CABLE, 15, SOUND_PCM_CH4);
 
-				// надо немного подождать чтоб ведомая приставка (slave) успела обработать полученный пакет
+				// need to wait a bit so slave console can process received packet
 				SYS_doVBlankProcess();
 
-				// выходим из функции
+				// exit function
 				return;
 			}
-
 		}
 
-		memcpy(gameModeText, "TRY  SLAVE!", 11);
+		memcpy(gameModeText, TEXT_TRY_SLAVE, GAME_MODE_TEXT_SIZE);
 
-		// так как не удалось получить от другой приставки OBJECT_TYPE_SLAVE с фразой 'Pac-Man!'
-		// пробуем получить данные в качестве ведомой приставки (slave)
+		// since we failed to receive OBJECT_TYPE_SLAVE with phrase 'Pac-Man!' from another console
+		// try to receive data as slave console
 
-		// в переменную buffer положим объект типа данных OBJECT_TYPE_SLAVE фразу "Pac-Man!"
+		// put OBJECT_TYPE_SLAVE data type object with phrase "Pac-Man!" into buffer variable
 		slaveToTransferObject();
-		// добавляем в пакет для передачи данных созданный объект в переменной buffer
-		LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_SLAVE , LINK_TYPES_LENGHT);
-		// теперь у нас в пакете 2 объекта и OBJECT_TYPE_MASTER и OBJECT_TYPE_SLAVE
-		// и в случае получания нашей приставкой пакета от другой мы ей отправим оба объекта в пакете
-		// но ведущая приставка будет ожидать только OBJECT_TYPE_SLAVE, объект OBJECT_TYPE_MASTER будет ей
-		// проигнорирован смотри код выше
+		// add created object from buffer variable to packet for data transmission
+		LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_SLAVE , LINK_TYPES_LENGTH);
+		// now we have 2 objects in packet: both OBJECT_TYPE_MASTER and OBJECT_TYPE_SLAVE
+		// and in case our console receives packet from another, we will send both objects in packet to it
+		// but master console will expect only OBJECT_TYPE_SLAVE, OBJECT_TYPE_MASTER object will be
+		// ignored by it, see code above
 
-		// открываем 2 порт приставки, что означает теперь наша приставка будет обрабатывать внешнние прерывания
-		// External interrupt (EX-INT) и сначала получать пакеты при наступлении этого прерывания затем отправлять.
-		// Происходить это будет асинхронно с основным кодом игры, потому что посути другая приставка
-		// удаленно вызывает метод нашей приставки LCP_slaveCycle() останавливая текущее выполнение программы на нашей
-		// в люой рандомный момент
+		// open console port 2, which means now our console will process external interrupts
+		// External interrupt (EX-INT) and first receive packets when this interrupt occurs, then send.
+		// This will happen asynchronously with main game code, because essentially another console
+		// remotely calls our console's method LCP_slaveCycle(), stopping current program execution on our console
+		// at any random moment
 		LCP_open();
 
-		// таймер по истечении кторого считаем что нет соединения по SEGA Link Cable
+		// timer after which we consider there is no SEGA Link Cable connection
 		u16 timer = 0xFFFF;
 		while (timer > 0) {
 			drawText();
@@ -434,55 +491,57 @@ void initControllerPort2() {
 
 			pad1 = JOY_readJoypad(JOY_1);
 			if (pad1 & BUTTON_START) {
-				// если на 1 контроллере нажат Start выход из цикла ожидания соединения с другой приставкой
+				// if Start is pressed on controller 1, exit connection waiting loop with another console
 				break;
 			}
 
-			// пытаемся получить объект из полученного объекта
-			objectType = LCP_getNextObjectFromRecivePacket(transferObject, LINK_TYPES_LENGHT);
+			// try to get object from received packet
+			objectType = LCP_getNextObjectFromReceivePacket(transferObject, LINK_TYPES_LENGTH);
 
-			// Проверка что получили от другой приставки OBJECT_TYPE_MASTER с фразой 'Pac-Girl'
-			if (objectType == OBJECT_TYPE_MASTER && LCP_getError() == 0) {
-				// Наша приставка становется ведомой (slave)
-				// это значит что далее при взаимоействии ведущая приставка (master) другого игрока
-				// будет вызывать у нашей внешннее прерывание - External interrupt (EX-INT) в следнствии
-				// чего основной код игры на нашей ведомой приставке (slave) будет приостановлен на время
-				// выполняния функции обработчика внешнего прирывания.
-				// теперь получение и отправка пакетов на нашей приставке будет происходить асинхронно
-				// по средатвам вызова метода LCP_slaveCycle() в любой рандомный для нас момент другой приставкой
-				// а разбор объектов из пакета будет в основном коде игры в методе controls() там же и подготовка
-				// пакета на отправку нашей приставкой
+			// Check that we received OBJECT_TYPE_MASTER with phrase 'Pac-Girl' from another console
+			linkCableErrors = LCP_getError();
+			if (objectType == OBJECT_TYPE_MASTER && linkCableErrors == 0) {
+				// Our console becomes slave
+				// this means that further during interaction master console of other player
+				// will call external interrupt - External interrupt (EX-INT) on our console as a result
+				// of which main game code on our slave console will be suspended for the time
+				// of external interrupt handler function execution.
+				// now packet reception and sending on our console will happen asynchronously
+				// through calling LCP_slaveCycle() method at any random moment for us by another console,
+				// and packet object parsing will be in main game code in controls() method, also packet
+				// preparation for sending by our console
 				controllerPort2Mode = MODE_PORT2_SLAVE;
 
-				// вывести на экран тип игры 'Pac-Girl' - 1 player при этом играет на контроллере подключенным
-				// в 1 порт другой приставки через SEGA Link Cable воткнутый во 2 порт обоих приставок
-				memcpy(gameModeText, "LINK  SLAVE", GAME_MODE_TEXT_LENGHT);
+				// display game type 'Pac-Girl' - 1 player playing on controller connected
+				// to port 1 of another console via SEGA Link Cable connected to port 2 of both consoles
+				memcpy(gameModeText, TEXT_LINK_SLAVE, GAME_MODE_TEXT_SIZE);
 
-				// звук что удалось создать соединение по Link cabile
+				// sound that connection via Link cable was successfully created
 				XGM_startPlayPCM(SFX_SOUND_CONNECT_LINK_CABLE, 15, SOUND_PCM_CH4);
 
-				// выходим из функции
+				// exit function
 				return;
 			}
 
 			timer--;
 		}
 
-		// не удалось создать соединение через SEGA Link Cable
-		// закрываем порт, что значит что больше не обрабатываем внешние прерывания - External interrupt (EX-INT)
-		// в обработчике LCP_slaveCycle()
+		// failed to create connection via SEGA Link Cable
+		// close port, which means we no longer process external interrupts - External interrupt (EX-INT)
+		// in LCP_slaveCycle() handler
 		LCP_close();
 	}
 
-	memcpy(gameModeText, "1P NO LINK!", GAME_MODE_TEXT_LENGHT);
+	memcpy(gameModeText, TEXT_1P_NO_LINK, GAME_MODE_TEXT_SIZE);
 
-	// Нет соединения по SEGA Link cabile и во 2ой порт не вткнут 3 или 6 кнопочный контроллер
-	// игра в одного только возможна
+	// No SEGA Link cable connection and no 3 or 6 button controller connected to 2nd port
+	// only single player game is possible
 	controllerPort2Mode = MODE_SINGLE_PLAYER;
 }
 
+
 /**
- *  Подсчет отчков с учетом всех бонусов
+ * Calculate score taking into account all bonuses
  */
 void calcScore() {
 	u16 i;
@@ -491,10 +550,12 @@ void calcScore() {
 	score001 = food001;
 
 	if (cherryBonus) {
+		// 200 points for cherry
 		score100 += 2;
 	}
 
 	for (i = 0; i < powerBonus; i++) {
+		// 25 points for power-up
 		score001 += 5;
 
 		if (score001 >= 10) {
@@ -513,6 +574,7 @@ void calcScore() {
 
 
 	for (i = 0; i < redBonus; i++) {
+		// 50 points for eaten ghost
 		score010 += 5;
 
 		if (score010 >=10) {
@@ -522,13 +584,14 @@ void calcScore() {
 	}
 }
 
+
 /**
- * Клетка по заданным координатам не стена (WALL)
- * y - координата Y на карте (map[][])
- * x - координата X на карте (map[][])
- * return 1 - не стена, 0 - стена
+ * Cell at given coordinates is not a wall (WALL)
+ * y - Y coordinate on map (map[][])
+ * x - X coordinate on map (map[][])
+ * return 1 - not a wall, 0 - wall
  */
-u8 isNotWell(s16 y, s16 x) {
+u8 isNotWall(s16 y, s16 x) {
 	if (map[y][x] == PACMAN || map[y][x] == PACGIRL || map[y][x] == RED
 			|| map[y][x] == CHERRY || map[y][x] == FOOD
 			|| map[y][x] == POWER_FOOD || map[y][x] == EMPTY
@@ -539,14 +602,15 @@ u8 isNotWell(s16 y, s16 x) {
 	return 0;
 }
 
+
 /**
- * Клетка по заданным координатам не стена и не дверь (WALL, DOOR)
- * y - координата Y на карте (map[][])
- * x - координата X на карте (map[][])
- * return 1 - не стена и не дверь, 0 - стена или дверь
+ * Cell at given coordinates is not a wall and not a door (WALL, DOOR)
+ * y - Y coordinate on map (map[][])
+ * x - X coordinate on map (map[][])
+ * return 1 - not a wall and not a door, 0 - wall or door
  */
-u8 isNotWellOrDoor(s16 y, s16 x) {
-	if (isNotWell(y, x) && map[y][x] != DOOR) {
+u8 isNotWallOrDoor(s16 y, s16 x) {
+	if (isNotWall(y, x) && map[y][x] != DOOR) {
 		return 1;
 
 	}
@@ -555,11 +619,11 @@ u8 isNotWellOrDoor(s16 y, s16 x) {
 
 
 /**
- * Корректировка координат PAC-MAN, PAC-GIRL или Призрака
- * если вышел за поле (появление с другой стороны поля)
- * x - координата по X на карте (map[][])
- * y - координата по y на карте (map[][])
- * значение передаются по ссылке, по этому они меняются
+ * Coordinate correction for PAC-MAN, PAC-GIRL or Ghost
+ * if went beyond the field (appearing from the other side of the field)
+ * x - X coordinate on map (map[][])
+ * y - Y coordinate on map (map[][])
+ * values are passed by reference, so they change
  */
 void moveBound(s16 *x, s16 *y) {
 	if (*x < 0) {
@@ -575,20 +639,24 @@ void moveBound(s16 *x, s16 *y) {
 	}
 }
 
+
 /**
- * Открыть двери к вишне и дому призраков
+ * Open doors to cherry and ghost house
  */
 void openDoors() {
 	map[doorY][doorX] = EMPTY;
-	map[cherryY][cherryX] = CHERRY;
+	if (!cherryBonus) {
+		map[cherryY][cherryX] = CHERRY;
+	}
 
 	cherryFlag = 1;
 	refreshCherry = 1;
 }
 
+
 /**
- * Закрыть двери к дому призраков
- * если вишню не съел PACMAN она появится еще
+ * Close doors to ghost house
+ * if PACMAN didn't eat the cherry, it will appear again
  */
 void closeDoors(void) {
 	map[doorY][doorX] = DOOR;
@@ -598,16 +666,17 @@ void closeDoors(void) {
 	refreshCherry = 0;
 }
 
+
 /**
- * Сбрасываем все на начальные настройки по карте:
- * начальные значения счетчиков циклов
- * начальное положение персонажей
- * где будет еда и поверапы
+ * Reset everything to initial map settings:
+ * initial cycle counter values,
+ * initial character positions,
+ * where food and power-ups will be
  */
-void init() {
+void resetGame() {
 	u16 i, j;
-	// счетчики циклов начинаются с разных значений
-	// чтоб рендеринг каждого персонажа был в разном глобальном цикле
+	// cycle counters start with different values,
+	// so each character's rendering is in different global cycle
 	pacmanLastUpdateTime = PACMAN_SPEED;
 	redLastUpdateTime = 4;     //RED_SPEED;
 	pacGirlLastUpdateTime = 6; //PACGIRL_SPEED;
@@ -621,7 +690,6 @@ void init() {
 	food001 = 1;
 	food010 = 0;
 	food100 = 0;
-
 
 	pacmanX = 15;
 	pacmanY = 17;
@@ -658,39 +726,37 @@ void init() {
 	refreshCherry = 0;
 	refreshDoor = 1;
 
-
 	oldRedVal = '.';
 	oldPacGirlVal = '.';
 
-	// расстовляем еду по карте (серые точки)
+	// place food on the map (gray dots)
 	for (i = 0; i < MAP_SIZE_X; i++) {
 		for (j = 0; j < MAP_SIZE_Y; j++) {
 			val = map[j][i];
 			if (val == EMPTY || val == PACGIRL || val == PACMAN || val == RED || val == SHADOW) {
 				map[j][i] = FOOD;
 			}
-
 		}
 	}
 
-	// расставляем поверапы
+	// place power-ups
 	map[2][1] = POWER_FOOD;
 	map[2][29] = POWER_FOOD;
 	map[17][1] = POWER_FOOD;
 	map[17][29] = POWER_FOOD;
 
-	// Pac-Man на начальную позицию
+	// Pac-Man to starting position
 	map[pacmanY][pacmanX] = PACMAN;
 
-	// Red на начальную позицию
+	// Red to starting position
 	map[redY][redX] = RED;
 
-    // Pac-Girl на начальную позицию
+    // Pac-Girl to starting position
 	map[pacGirlY][pacGirlX] = PACGIRL;
 
-	// дверь в дом призраков
-	// черешня и клетки вокруг
-	// в начальное состояние на карте
+	// door to ghost house,
+	// cherry and surrounding cells
+	// to initial state on the map
 	map[doorY][doorX] = DOOR;
 	map[doorY + 1][doorX] = EMPTY;
 	map[cherryY][cherryX - 2] = EMPTY;
@@ -699,8 +765,8 @@ void init() {
 	map[cherryY][cherryX + 1] = EMPTY;
 	map[cherryY][cherryX + 2] = EMPTY;
 
-	// Надо сбросить т.к. когда начнем новою игру можем еще не успеть получить
-	// пакет с состоянием игры ведущей приставки (master) и ведомая приставка (slave) подумает что игра завершена
+	// Need to reset because when starting a new game, we may not have time to receive
+	// packet with game state from master console, and slave console will think the game is over
 	gameStateMaster = STATE_GAME;
 }
 
@@ -708,12 +774,12 @@ void init() {
 /**
  * SEGA
  *
- * Съедена еда
- * пересчитать значения счетчиков
+ * Food was eaten
+ * recalculate counter values
  * food001 food010 food100
  */
 void incFood() {
-	// звук поедания точки
+	// sound of eating a dot
 	XGM_startPlayPCM(SFX_SOUND_EAT, 1, SOUND_PCM_CH2);
 
 	++food001;
@@ -731,84 +797,117 @@ void incFood() {
 /**
  * SEGA
  *
- * Проиграл ли PACMAN или он мог съесть призрака
- * и что съел на месте призрака
+ * Whether PACMAN lost or could eat the ghost
+ * and what was eaten at the ghost's location: PACMAN or PACGIRL
  */
 u8 pacmanLooser() {
-	// Если RED и PACMAN на одной клетке поля
+	// If RED and PACMAN are on the same cell
 	if (redY == pacmanY && redX == pacmanX) {
-		// RED не съедобен
+		// RED is not edible
 		if (redFlag) {
-			// Конец игры - PACMAN съеден
+			// End of game - PACMAN was eaten
 
 			map[pacmanY][pacmanX] = RED;
 
-			// убрать спрайт Pac-Man с экрана
+			// remove Pac-Man sprite from screen
 			SPR_setPosition(pacmanSprite, -90, 90);
 
-			// обездвижить Pac-Girl
+			// immobilize Pac-Girl
 			dxPacGirl = 0;
 			dyPacGirl = 0;
 
-			// останавливаем RED
+			// stop RED
 			dxRed = 0;
 			dyRed = 0;
 
 	        calcScore();
 
+	    	if (MODE_PORT2_MASTER == controllerPort2Mode) {
+	    		// send ghost state to slave console
+	    		redStateToTransferObject();
+	    		LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_RED_STATE, LINK_TYPES_LENGTH);
+
+	    		// send to slave console that game ended
+	    		LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_END_GAME, LINK_TYPES_LENGTH);
+	    	}
+
 			return 1;
 		} else {
-			// звук поедания призрака
+			// sound of eating ghost
 			XGM_startPlayPCM(SFX_SOUND_EAT_SHADOW, 15, SOUND_PCM_CH3);
 
-			// RED съедобен в данный момент
-			// Отправляем его в дом Приведений
+			// RED is edible at the moment
+			// Send it to the Ghost House
 			redY = 10;
 			redX = 15;
-			//обездвиживаем
+			// immobilize
 			dyRed = 0;
 			dxRed = 0;
-			// закрываем дверь в дом привидений
+			// close door to ghost house
 			closeDoors();
 
-	    	// скрыть черешню
+	    	// hide cherry
 	    	SPR_setPosition(cherrySprite, -90, 100);
 
-			// отображаем RED на карте как съедобного
+			// display RED on map as edible
 			map[redY][redX] = RED;
 
 	        redFlag = 1;
 
-
-	       	// пусть сидит в домике дополнительное время
+	       	// let it stay in the house for additional time
 	        redTime = RED_TIME;
 
-			// даем бонус за то что RED съели
+			// give bonus for eating RED
 			++redBonus;
 
-			// проверяем что пакмен съел вместе с RED
+	    	if (MODE_PORT2_MASTER == controllerPort2Mode) {
+	    		// send ghost state to slave console
+	    		redStateToTransferObject();
+	    		LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_RED_STATE, LINK_TYPES_LENGTH);
+
+	    		// send to slave console that ghost was eaten
+	    		LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_EAT_SHADOW, LINK_TYPES_LENGTH);
+	    	}
+
+			// check what Pac-Man ate together with RED
 			if (oldRedVal == FOOD) {
-				// еду
+				// food
 				incFood();
+
+		    	if (MODE_PORT2_MASTER == controllerPort2Mode) {
+		    		// send to slave console that white dot (food) was eaten
+		    		LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_EAT_POINT, LINK_TYPES_LENGTH);
+		    	}
 			} else if (oldRedVal == POWER_FOOD) {
-				// поверап
+				// power-up
 				++powerBonus;
 
-				// звук поедания поверапа
+				// sound of eating power-up
 				XGM_startPlayPCM(SFX_SOUND_POWERUP, 15, SOUND_PCM_CH2);
 
-				// обнавляем время когда RED стал съедобным
+				// update time when RED became edible
 				redTime = RED_TIME;
 
+		    	if (MODE_PORT2_MASTER == controllerPort2Mode) {
+		    		// send to slave console that power-up (green dot) was eaten
+		    		LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_EAT_POWERUP, LINK_TYPES_LENGTH);
+		    	}
+
 			} else if (oldRedVal == CHERRY) {
-				// вишню
+				// cherry
 				++cherryBonus;
 
-				// скрыть черешню
+				// hide cherry
 				SPR_setPosition(cherrySprite, -90, 100);
 
-				// звук поедания черешни
+				// sound of eating cherry
 				XGM_startPlayPCM(SFX_SOUND_CHERRY, 15, SOUND_PCM_CH2);
+
+		    	if (MODE_PORT2_MASTER == controllerPort2Mode) {
+		    		// send to slave console that cherry was eaten
+		    		LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_EAT_CHERRY, LINK_TYPES_LENGTH);
+		    	}
+
 			}
 
 			if (cherryBonus) {
@@ -818,32 +917,46 @@ u8 pacmanLooser() {
 			}
 		}
 	} else if (redY == pacGirlY && redX == pacGirlX) {
-		// проверяем что Pac-Girl съела на месте RED
+		// check what Pac-Girl ate at RED's location
 		if (oldRedVal == FOOD) {
-			// еду
+			// food
 			incFood();
+	    	if (MODE_PORT2_MASTER == controllerPort2Mode) {
+	    		// send to slave console that white dot (food) was eaten
+	    		LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_EAT_POINT, LINK_TYPES_LENGTH);
+	    	}
 		} else if (oldRedVal == POWER_FOOD) {
-			// поверап
+			// power-up
 			++powerBonus;
 
-			// звук поедания поверапа
+			// sound of eating power-up
 			XGM_startPlayPCM(SFX_SOUND_POWERUP, 15, SOUND_PCM_CH2);
 
-			// обнавляем время когда RED стал съедобным
+			// update time when RED became edible
 			redTime = RED_TIME;
 
-			// RED становится съедобным
+			// RED becomes edible
 			redFlag = 0;
+
+	    	if (MODE_PORT2_MASTER == controllerPort2Mode) {
+	    		// send to slave console that power-up (green dot) was eaten
+	    		LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_EAT_POWERUP, LINK_TYPES_LENGTH);
+	    	}
 		} else if (oldRedVal == CHERRY) {
-			// вишню
+			// cherry
 			++cherryBonus;
 
-			// скрыть черешню
+			// hide cherry
 			SPR_setPosition(cherrySprite, -90, 100);
 			refreshCherry = 0;
 
-			//звук поедания черешни
+			// sound of eating cherry
 			XGM_startPlayPCM(SFX_SOUND_CHERRY, 15, SOUND_PCM_CH2);
+
+	    	if (MODE_PORT2_MASTER == controllerPort2Mode) {
+	    		// send to slave console that cherry was eaten
+	    		LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_EAT_CHERRY, LINK_TYPES_LENGTH);
+	    	}
 		}
 
 		map[pacGirlY][pacGirlX] = RED;
@@ -853,84 +966,105 @@ u8 pacmanLooser() {
 	return 0;
 }
 
+
 /**
  * SEGA
  *
- * Алгоритм обработки движения PAC-MAN на карте
- * return 0 - Конец игры
- *        1 - PACMAN еще жив
+ * PAC-MAN movement processing algorithm on the map
+ * return 0 - End of game
+ *        1 - PACMAN is still alive
  */
 u8 pacManState() {
-	// проверяем, у PACMAN задоно ли направление движения
+	// check if PACMAN has movement direction set
 	if (dx != 0 || dy != 0) {
 
-		// должен ли PACMAN переместиться на новую клетку
+		// should PACMAN move to a new cell
 		if (pacmanLastUpdateTime == 0) {
 			oldX = pacmanX;
 			oldY = pacmanY;
 			pacmanX = pacmanX + dx;
 			pacmanY = pacmanY + dy;
 
-			// сбрасываем счетчик времени
+			// reset time counter
 			pacmanLastUpdateTime = PACMAN_SPEED;
 
-			// корректируем координаты PACMAN если надо (чтоб не вышел с поля)
-			// если вышел за поле (появление с другой стороны поля)
+			// adjust PACMAN coordinates if needed (to prevent leaving the field)
+			// if went beyond the field (appearing from the other side of the field)
 			moveBound(&pacmanX, &pacmanY);
 
-			// если текущая клетка с едой, увиличиваем счетчик съеденного
+			// if current cell has food, increase eaten counter
 			val = map[pacmanY][pacmanX];
 			if (val == FOOD) {
 				incFood();
+		    	if (MODE_PORT2_MASTER == controllerPort2Mode) {
+		    		// send to slave console that white dot (food) was eaten
+		    		LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_EAT_POINT, LINK_TYPES_LENGTH);
+		    	}
 			} else if (val == POWER_FOOD) {
-				// RED становится съедобным
+				// RED becomes edible
 				redFlag = 0;
-				// бежит в обратную сторону
+				// runs in the opposite direction
 				dxRed = -dxRed;
 				dyRed = -dyRed;
 
-				// RED стал съедобным
+				// RED became edible
 				redTime = RED_TIME;
 
-				// и даем еще бонус
+				// and give additional bonus
 				++powerBonus;
 
-				// звук поедания поверапа
+				// sound of eating power-up
 				XGM_startPlayPCM(SFX_SOUND_POWERUP, 15, SOUND_PCM_CH2);
+
+		    	if (MODE_PORT2_MASTER == controllerPort2Mode) {
+		    		// send to slave console that power-up (green dot) was eaten
+		    		LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_EAT_POWERUP, LINK_TYPES_LENGTH);
+		    	}
 
 			} else if (val == CHERRY) {
 				++cherryBonus;
 
-				// скрыть черешню
+				// hide cherry
 				SPR_setPosition(cherrySprite, -90, 100);
 				refreshCherry = 0;
 
-				// звук поедания черешни
+				// sound of eating cherry
 				XGM_startPlayPCM(SFX_SOUND_CHERRY, 15, SOUND_PCM_CH2);
+
+		    	if (MODE_PORT2_MASTER == controllerPort2Mode) {
+		    		// send to slave console that cherry was eaten
+		    		LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_EAT_CHERRY, LINK_TYPES_LENGTH);
+		    	}
 			}
 
 
-			if (isNotWellOrDoor(pacmanY, pacmanX)) {
-				// если в новой клетке не дверь то в старой делаем пустую клетку
+			if (isNotWallOrDoor(pacmanY, pacmanX)) {
+				// if new cell is not a door, make old cell empty
 				map[oldY][oldX] = EMPTY;
 				drawBlackBox(oldY, oldX);
 			} else {
-				// если в новой клетке стена WALL или дверь DOOR
-				// остаемся на прошлой клетке
+				// if new cell is wall WALL or door DOOR
+				// stay on previous cell
 				pacmanY = oldY;
 				pacmanX = oldX;
-				// вектор движения сбрасываем (PACMAN останавливается)
+				// reset movement vector (PACMAN stops)
 				dx = 0;
 				dy = 0;
 			}
 
-			// рисуем пакмена в координатах текущей клетки карты
+			// draw pacman at current map cell coordinates
 			map[pacmanY][pacmanX] = PACMAN;
 
-			// если съеденны все FOOD и POWER_FOOD - PACMAN выиграл
+			if (MODE_PORT2_MASTER == controllerPort2Mode) {
+				// send Pac-Man state to slave console
+				pacManStateToTransferObject();
+				LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_PAC_MAN_STATE, LINK_TYPES_LENGTH);
+			}
+
+			// if all FOOD and POWER_FOOD are eaten - PACMAN won
 			if (winner()) {
 
-				// звук выиграша
+				// victory sound
 				XGM_startPlay(victory_vgm);
 
 
@@ -942,13 +1076,19 @@ u8 pacManState() {
 				dyRed = 0;
 
 				calcScore();
+
+		    	if (MODE_PORT2_MASTER == controllerPort2Mode) {
+		    		// send to slave console that game ended
+		    		LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_END_GAME, LINK_TYPES_LENGTH);
+		    	}
+
 				return 0;
 			}
 
-			// сеъеи ли PACMAN привидение (или оно нас)
+			// did PACMAN eat the ghost (or did it eat us)
 			if (pacmanLooser()) {
 
-				// звук окончания игры
+				// game over sound
 				XGM_startPlay(fatality_vgm);
 				return 0;
 			}
@@ -959,22 +1099,28 @@ u8 pacManState() {
 	return 1;
 }
 
+
 /**
  * SEGA
  *
- * Алгоритм обработки движения PAC-GIRL на карте
- * return 0 - Конец игры
- *        1 - PACMAN еще жив
+ * PAC-GIRL movement processing algorithm on the map
+ * return 0 - End of game
+ *        1 - PACMAN is still alive
  */
 u8 pacGirlState() {
-	// проверяем, у pacGirl задоно ли направление движения
+	// check if pacGirl has movement direction set
 	if (dxPacGirl != 0 || dyPacGirl != 0) {
 
-		// если подключился 2 игрок
+		// if 2nd player connected
 		if (players == 1) {
 			players = 2;
 			if (map[pacGirlY][pacGirlX] == FOOD) {
 				incFood();
+
+		    	if (MODE_PORT2_MASTER == controllerPort2Mode) {
+		    		// send to slave console that white dot (food) was eaten
+		    		LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_EAT_POINT, LINK_TYPES_LENGTH);
+		    	}
 			}
 		}
 
@@ -986,63 +1132,82 @@ u8 pacGirlState() {
 
 			pacGirlLastUpdateTime = PACGIRL_SPEED;
 
-			// если вышел за поле (появление с другой стороны поля)
+			// if went beyond the field (appearing from the other side of the field)
 			moveBound(&pacGirlX, &pacGirlY);
 
-
-			// если текущая клетка с едой, увиличиваем счетчик съеденного
+			// if current cell has food, increase eaten counter
 			val = map[pacGirlY][pacGirlX];
 			if (val == FOOD) {
 				incFood();
+		    	if (MODE_PORT2_MASTER == controllerPort2Mode) {
+		    		// send to slave console that white dot (food) was eaten
+		    		LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_EAT_POINT, LINK_TYPES_LENGTH);
+		    	}
 			} else if (val == POWER_FOOD) {
-				// RED становится съедобным
+				// RED becomes edible
 				redFlag = 0;
-				// бежит в обратную сторону
+				// runs in the opposite direction
 				dxRed = -dxRed;
 				dyRed = -dyRed;
 
-
-				// RED стал съедобным
+				// RED became edible
 				redTime = RED_TIME;
 
-				// и даем еще бонус
+				// and give additional bonus
 				++powerBonus;
 
-				// звук поедания поверапа
+				// sound of eating power-up
 				XGM_startPlayPCM(SFX_SOUND_POWERUP, 15, SOUND_PCM_CH2);
+
+		    	if (MODE_PORT2_MASTER == controllerPort2Mode) {
+		    		// send to slave console that power-up (green dot) was eaten
+		    		LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_EAT_POWERUP, LINK_TYPES_LENGTH);
+		    	}
+
 			} else if (val == CHERRY) {
 				++cherryBonus;
 
-				// скрыть черешню
+				// hide cherry
 				SPR_setPosition(cherrySprite, -90, 100);
 				refreshCherry = 0;
 
-				// звук поедания черешни
+				// sound of eating cherry
 				XGM_startPlayPCM(SFX_SOUND_CHERRY, 15, SOUND_PCM_CH2);
+
+		    	if (MODE_PORT2_MASTER == controllerPort2Mode) {
+		    		// send to slave console that cherry was eaten
+		    		LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_EAT_CHERRY, LINK_TYPES_LENGTH);
+		    	}
 			}
 
-			if (isNotWellOrDoor(pacGirlY, pacGirlX)) {
-				// если в новой клетке не дверь то в старой делаем пустую клетку
+			if (isNotWallOrDoor(pacGirlY, pacGirlX)) {
+				// if new cell is not a door, make old cell empty
 				oldPacGirlVal = val;
 				map[oldPacGirlY][oldPacGirlX] = EMPTY;
 				drawBlackBox(oldPacGirlY, oldPacGirlX);
 			} else {
-				// если в новой клетке стена WALL или дверь DOOR
-				// остаемся на прошлой клетке
+				// if new cell is wall WALL or door DOOR
+				// stay on previous cell
 				pacGirlY = oldPacGirlY;
 				pacGirlX = oldPacGirlX;
-				// вектор движения сбрасываем (PACMAN останавливается)
+				// reset movement vector (PAC-GIRL stops)
 				dxPacGirl = 0;
 				dyPacGirl = 0;
 			}
 
-			// рисуем PAC-GIRL в координатах текущей клетки карты
+			// draw PAC-GIRL at current map cell coordinates
 			map[pacGirlY][pacGirlX] = PACGIRL;
 
-			// если съеденны все FOOD и POWER_FOOD - PACMAN выиграл
+			if (MODE_PORT2_MASTER == controllerPort2Mode) {
+				// send Pac-Girl state to slave console
+				pacGirlStateToTransferObject();
+				LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_PAC_GIRL_STATE, LINK_TYPES_LENGTH);
+			}
+
+			// if all FOOD and POWER_FOOD are eaten - PACMAN won
 			if (winner()) {
 
-				// звук когда выиграли
+				// victory sound
 				XGM_startPlay(victory_vgm);
 
 				dxPacGirl = 0;
@@ -1053,12 +1218,18 @@ u8 pacGirlState() {
 				dyRed = 0;
 
 				calcScore();
+
+		    	if (MODE_PORT2_MASTER == controllerPort2Mode) {
+		    		// send to slave console that game ended
+		    		LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_END_GAME, LINK_TYPES_LENGTH);
+		    	}
+
 				return 0;
 			}
 
-			// сеъел ли PACMAN привидение (или оно нас)
+			// did PACMAN eat the ghost (or did it eat us)
 			if (pacmanLooser()) {
-				// звук окончания игры
+				// game over sound
 				XGM_startPlay(fatality_vgm);
 				return 0;
 			}
@@ -1072,171 +1243,171 @@ u8 pacGirlState() {
 /**
  * SEGA
  *
- * Алгоритм призрака гоняющегося за PAC-MAN
- * return 0 - Конец игры
- *        1 - PACMAN еще жив
+ * Ghost chasing PAC-MAN algorithm
+ * return 0 - End of game
+ *        1 - PACMAN is still alive
  */
 u8 redState() {
 
-	// надо ли RED перейти в режим погони
+	// should RED switch to chase mode
 	if (redTime == 0 ) {
 		redFlag = 1;
-		// если не двигается, пусть идет вверх
+		// if not moving, let it go up
 		if (dyRed == 0 && dxRed == 0) {
 			dyRed = -1;
 			dxRed = 0;
 		}
 	} else if (redLastUpdateTime == 0 && dyRed == 0 && dxRed == 0) {
-		// пока призрак не может двигаться
+		// ghost cannot move yet
 		redLastUpdateTime = RED_SPEED;
 	}
 
-	// проверяем, у RED задоно ли направление движения
+	// check if RED has movement direction set
 	if (dxRed != 0 || dyRed != 0) {
 		if (redLastUpdateTime == 0) {
-			// можно обновить координаты призрака
-			// запоминаем старые координаты призрака
+			// can update ghost coordinates
+			// remember old ghost coordinates
 			oldXRed = redX;
 			oldYRed = redY;
 
-			// меняем координаты призрака (одеовременно dxRed и dyRed не могут быть больше 0!)
+			// change ghost coordinates (dxRed and dyRed cannot be greater than 0 simultaneously!)
 			redX = redX + dxRed;
 			redY = redY + dyRed;
 
 			redLastUpdateTime = RED_SPEED;
 
-			// вышли за границы
+			// went beyond boundaries
 			moveBound(&redX, &redY);
 
-			if (isNotWell(redY, redX)) {
-				// текущие координаты не препядствие
+			if (isNotWall(redY, redX)) {
+				// current coordinates are not an obstacle
 				map[oldYRed][oldXRed] = oldRedVal;
 				oldRedVal = map[redY][redX];
 
 				if (redX == 15 && redY >= 7 && redY <= 10) {
-					// призрак из дома призрака всегда выходит вверх
-					// ну и зайти назад не может!
+					// ghost always exits ghost house upwards
+					// and cannot go back!
 					dyRed = -1;
 					dxRed = 0;
 				} else if (dxRed != 0) {
-					// призрак двигается по оси X
+					// ghost is moving along X axis
 					if (redFlag && redY != pacmanY) {
-						// призрак не съедобен и не догнал Pac-Man
-						if (isNotWellOrDoor(redY + 1, redX)	&& isNotWellOrDoor(redY - 1, redX)) {
-							// есть альтернативный путь по оси x
+						// ghost is not edible and hasn't caught Pac-Man
+						if (isNotWallOrDoor(redY + 1, redX)	&& isNotWallOrDoor(redY - 1, redX)) {
+							// there is an alternative path along x axis
 							if (abs(redY + 1 - pacmanY) < abs(redY - 1 - pacmanY)) {
-								// путь до Pac-Man вниз короче до Pac-Man по Y
+								// path to Pac-Man downwards is shorter to Pac-Man by Y
 								dyRed = 1;
 							} else {
-								// путь до Pac-Man вверх короче до Pac-Man по Y
+								// path to Pac-Man upwards is shorter to Pac-Man by Y
 								dyRed = -1;
 							}
-						} else if (isNotWellOrDoor(redY + 1, redX)) {
-							// есть путь вниз
+						} else if (isNotWallOrDoor(redY + 1, redX)) {
+							// there is a path down
 							if (abs(redY + 1 - pacmanY) < abs(redY - pacmanY)) {
-								// путь вниз короче до Pac-Man по Y
+								// path down is shorter to Pac-Man by Y
 								dyRed = 1;
 							}
-						} else if (isNotWellOrDoor(redY - 1, redX)) {
-							// есть путь вверх
+						} else if (isNotWallOrDoor(redY - 1, redX)) {
+							// there is a path up
 							if (abs(redY - 1 - pacmanY) < abs(redY - pacmanY)) {
-								// путь вверх короче до Pac-Man по Y
+								// path up is shorter to Pac-Man by Y
 								dyRed = -1;
 							}
 						}
 					} else {
-						// Призрак съедобен
-						if (isNotWellOrDoor(redY + 1, redX)) {
-							// если есть другой путь выбираем случайно куда пойдет призрак
+						// Ghost is edible
+						if (isNotWallOrDoor(redY + 1, redX)) {
+							// if there is another path, choose randomly where ghost will go
 							dyRed = random() % 2;
 						}
 
-						if (isNotWellOrDoor(redY - 1, redX)) {
-							// если есть другой путь выбираем случайно куда пойдет призрак
+						if (isNotWallOrDoor(redY - 1, redX)) {
+							// if there is another path, choose randomly where ghost will go
 							dyRed = -1 * (random() % 2);
 						}
 					}
 
 					if (dyRed != 0) {
-						// если меняется направление движения с x на y надо обнулить смещение по x
+						// if movement direction changes from x to y, need to reset x offset
 						dxRed = 0;
 					}
 
 				} else if (dyRed != 0) {
-					// призрак двигается по оси Y
+					// ghost is moving along Y axis
 					if (redFlag && redX != pacmanX) {
-						// призрак не съедобен и не догнал Pac-Man
-						if (isNotWellOrDoor(redY, redX + 1)	&& isNotWellOrDoor(redY, redX - 1)) {
-							// есть альтернативный путь выбираем какой короче по X
+						// ghost is not edible and hasn't caught Pac-Man
+						if (isNotWallOrDoor(redY, redX + 1)	&& isNotWallOrDoor(redY, redX - 1)) {
+							// there is an alternative path, choose which is shorter by X
 							if (abs(redX + 1 - pacmanX) < abs(redX - 1 - pacmanX)) {
-								// путь впаво короче до Pac-Man по X
+								// path to the right is shorter to Pac-Man by X
 								dxRed = 1;
 							} else {
-								// путь влево короче до Pac-Man по X
+								// path to the left is shorter to Pac-Man by X
 								dxRed = -1;
 							}
-						} else if (isNotWellOrDoor(redY, redX + 1)) {
-							// есть альтернативный путь вправо
+						} else if (isNotWallOrDoor(redY, redX + 1)) {
+							// there is an alternative path to the right
 							if (abs(redX + 1 - pacmanX) < abs(redX - pacmanX)) {
-								// путь вправо короче до Pac-Man по X
+								// path to the right is shorter to Pac-Man by X
 								dxRed = 1;
 							}
-						} else if (isNotWellOrDoor(redY, redX - 1)) {
-							// слква есть альтернативный путь для призрака
+						} else if (isNotWallOrDoor(redY, redX - 1)) {
+							// there is an alternative path to the left for ghost
 							if (abs(redX - 1 - pacmanX) < abs(redX - pacmanX)) {
-								// путь влево короче до Pac-Man по X
+								// path to the left is shorter to Pac-Man by X
 								dxRed = -1;
 							}
 
 						}
 					} else {
-						// Призрак съедобен
-						if (isNotWellOrDoor(redY, redX + 1)) {
-							// если есть другой путь выбираем случайно куда пойдет призрак
+						// Ghost is edible
+						if (isNotWallOrDoor(redY, redX + 1)) {
+							// if there is another path, choose randomly where ghost will go
 							dxRed = random() % 2;
 						}
 
-						if (isNotWellOrDoor(redY, redX - 1)) {
-							// если есть другой путь выбираем случайно куда пойдет призрак
+						if (isNotWallOrDoor(redY, redX - 1)) {
+							// if there is another path, choose randomly where ghost will go
 							dxRed = -1 * (random() % 2);
 						}
 
 					}
 
 					if (dxRed != 0) {
-						// если меняется направление движения с y на x надо обнулить смещение по y
+						// if movement direction changes from y to x, need to reset y offset
 						dyRed = 0;
 					}
 				}
 			} else {
-				// текущие координаты у призрака - припятствие, надо изменить направление движения
+				// current ghost coordinates are an obstacle, need to change movement direction
 				if (redX == 15 && redY >= 7 && redY <= 10) {
-					// из дома призрака выходит он всегда вверх
+					// from ghost house it always exits upwards
 					dyRed = -1;
 					dxRed = 0;
 				} else {
-					// возвращаем призорака в предидущие координаты
+					// return ghost to previous coordinates
 					redX = oldXRed;
 					redY = oldYRed;
 
 					if (dxRed != 0) {
-						// если призрак двигался по оси x надо его остановить
+						// if ghost was moving along x axis, need to stop it
 						dxRed = 0;
-						if (isNotWellOrDoor(redY + 1, redX)) {
-							// можно двигатся вниз
+						if (isNotWallOrDoor(redY + 1, redX)) {
+							// can move down
 							dyRed = 1;
-						} else if (isNotWellOrDoor(redY - 1, redX)) {
-							// можно двигаться вверх
+						} else if (isNotWallOrDoor(redY - 1, redX)) {
+							// can move up
 							dyRed = -1;
 						}
 					} else {
-						// если двигались по оси y
+						// if was moving along y axis
 						dyRed = 0;
-						if (isNotWellOrDoor(redY, redX + 1)) {
-							// можем двигаться вправо
+						if (isNotWallOrDoor(redY, redX + 1)) {
+							// can move right
 							dxRed = 1;
-						} else if (isNotWellOrDoor(redY, redX - 1)) {
-							// можем двигаться влево
+						} else if (isNotWallOrDoor(redY, redX - 1)) {
+							// can move left
 							dxRed = -1;
 						}
 					}
@@ -1244,12 +1415,17 @@ u8 redState() {
 
 			}
 
+			if (MODE_PORT2_MASTER == controllerPort2Mode) {
+				// send ghost state to slave console
+				redStateToTransferObject();
+				LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_RED_STATE, LINK_TYPES_LENGTH);
+			}
 
-			// сеъеи ли PACMAN привидение (или оно нас)
+			// did PACMAN eat the ghost (or did it eat us)
 			if (pacmanLooser()) {
-				// музыка оканчания игры
+				// game over music
 				XGM_startPlay(fatality_vgm);
-				// Pac-Man съеден, игра закончена
+				// Pac-Man was eaten, game over
 				return 0;
 			}
 
@@ -1257,14 +1433,14 @@ u8 redState() {
 	}
 
 	if (redFlag) {
-		// отображаем спрайт красного призрака
+		// display red ghost sprite
 		map[redY][redX] = RED;
 	} else {
-		// отображаем спрайт убегающего призрака
+		// display fleeing ghost sprite
 		map[redY][redX] = SHADOW;
 	}
 
-	// Pac-Man не съеден, игра продолжается
+	// Pac-Man not eaten, game continues
 	return 1;
 }
 
@@ -1272,21 +1448,23 @@ u8 redState() {
 /**
  *  SEGA
  *
- *  Перерисовать на бекграунде tile когда съели точку
- *  рисуем черный квадрат 8x8
+ *  Redraw background tile when a dot was eaten
+ *  draw black square 8x8
  */
 void drawBlackBox(s16 y, s16 x) {
+	// display empty square
 	VDP_setTileMapXY(BG_A, 1, x + 4, y);
 }
+
 
 /**
  * SEGA
  *
- * Для отладки, в буфер text положить значение числа в виде символов
- * 4 символа типа char число выводится в шеснадцатиричном формате
- * например десятичное 65535 будет выведено как FFFF
+ * For debugging, put number value as characters in text buffer
+ * 4 char type characters, number is displayed in hexadecimal format
+ * for example, decimal number 65535 will be displayed as FFFF
  *
- * val чтосло которое хотим вывести на экран
+ * val - number that we want to display on screen
  */
 void printU16(u16 val) {
 	u8 ch = '0';
@@ -1317,70 +1495,76 @@ void printU16(u16 val) {
 		}
 		text[j] = ch;
 
-		// сдвиг на 4 бита в право
+		// shift 4 bits to the right
 		val >>= 4;
 	}
 }
 
+
 /**
  *  SEGA
  *
- *  Нарисовать бонусы, очки
- *  результат игры (GAME OVER или YOU WINNER)
+ *  Draw bonuses, score,
+ *  game result (GAME OVER or YOU WINNER)
  */
 void drawText() {
 
 	switch (showLinkCableErrors) {
 		case SHOW_LINK_CABLE_LAST_ERROR:
-			// выводим на экран ошибки при передаче через Link Cadle
+			// display errors during transmission via Link Cable
 			printU16(linkCableErrors);
 			VDP_drawText(text, 28, 25);
 		break;
 
-
-		case SHOW_LINK_CABLE_ERROS_COUNT:
-			// выводим на экран количество ошибок при передаче через Link Cadle
+		case SHOW_LINK_CABLE_ERRORS_COUNT:
+			// display number of errors during transmission via Link Cable
 			printU16(linkCableErrorsCount);
 			VDP_drawText(text, 28, 25);
 		break;
 
-
 		case SHOW_LINK_CABLE_FRAME_COUNT:
-			//  количество отресованных фреймов с начала создания соединения через Link Cadle
+			// number of rendered frames since connection establishment via Link Cable
 			printU16(linkCableFrameCount);
 			VDP_drawText(text, 28, 25);
 		break;
 	}
 
 	if (STATE_SCREENSAVER != gameState) {
-		// кем мы играем при ире по Link Cable
-		// Pac-Man!  - ведущая (master)
-		// Pac-Girl  - ведомая (slave)
-		// Joy1+Joy2 - на одной приставке 2мя джойстиками
-		// No Link!  - один контроллер а что во втором или не ясно или ничего не воткнуто
+		// set text color for VDP_drawText() function to WHITE
+		PAL_setColor(15,RGB24_TO_VDPCOLOR(0xffffff));
+
+		// are we playing via Link Cable on two consoles or playing on one console with one or two controllers
+		// "LINK MASTER" - (TEXT_LINK_MASTER) playing via Link Cable on two consoles and our console is master
+		// "LINK  SLAVE" - (TEXT_LINK_SLAVE) playing via Link Cable on two consoles and our console is slave
+		// "2P NO Link!" - (TEXT_2P_NO_LINK) playing not via Link Cable and controller connected to port 2, 2 players playing on one console
+		// "1P NO LINK!" - (TEXT_1P_NO_LINK) playing not via Link Cable and no controller in port 2, 1 player playing
+		// "TRY MASTER!" - (TEXT_TRY_MASTER) attempt to create connection with another console as master
+		// "TRY  SLAVE!" - (TEXT_TRY_SLAVE) attempt to create connection with another console as slave
 		VDP_drawText(gameModeText, 14, 25);
 	}
 
 	memset(text, 0, 4);
 
 	if (STATE_GAME == gameState || STATE_RESULT == gameState) {
-		// идет игра или отображаем результат игры
+		// game is in progress or displaying game result
+
+		// set text color for VDP_drawText() function to WHITE
 		PAL_setColor(15,RGB24_TO_VDPCOLOR(0xffffff));
-		// количество съеденых черешень
+
+		// number of eaten cherries
 		text[0] = cherryBonus + '0';
 		text[1] = 0;
 		VDP_drawText(text, 10, 26);
 
-		// количество съеденных призраков
+		// number of eaten ghosts
 		text[0] = redBonus + '0';
 		VDP_drawText(text, 10, 24);
 
-        // количество съеденных поверапов
+        // number of eaten power-ups
 		text[0] = powerBonus + '0';
 		VDP_drawText(text, 27, 26);
 
-
-		// количество съеденных серых точек (еды)
+		// number of eaten gray dots (food)
 		text[0] = food100 + '0';
 		text[1] = food010 + '0';
 		text[2] = food001 + '0';
@@ -1390,86 +1574,83 @@ void drawText() {
 
 	if (STATE_RESULT == gameState) {
 		SYS_doVBlankProcess();
-		// отображаем результат игры
+		// display game result
 		if (winner()) {
-			// если победили
-			// пишем YOU WINNER
+			// set text color for VDP_drawText() function to GREEN
 			PAL_setColor(15,RGB24_TO_VDPCOLOR(0x00ff00));
+
+			// if won, write 'YOU WINNER'
 			VDP_drawText("YOU WINNER", 14, 24);
 		} else {
-			// если проиграли
-			// пишем GAME OVER
+			// set text color for VDP_drawText() function to RED
 			PAL_setColor(15,RGB24_TO_VDPCOLOR(0xff0000));
+
+			// if lost, write 'GAME OVER'
 			VDP_drawText("GAME OVER", 14, 24);
 		}
-		// пишем SCORE
+		// write 'SCORE'
 		VDP_drawText("SCORE ", 14, 26);
 
-
-		// отображаем количество полученных очков
-		// с учетом всех бонусов
-		// черешня 200 очков
-		// съеденный призрак 50 очков
-		// поверап 25 очков
-		// серая точка (еда) 1 очко
-
+		// display number of points earned
+		// taking into account all bonuses
+		// cherry 200 points
+		// eaten ghost 50 points
+		// power-up 25 points
+		// gray dot (food) 1 point
 
 		text[0] = score100 + '0';
 		text[1] = score010 + '0';
 		text[2] = score001 + '0';
 		VDP_drawText(text, 20, 26);
 	}
-
 }
 
 
 /**
  * SEGA
  *
- * Нарисовать спрайты
+ * Draw sprites
  */
 void drawSprites() {
 	switch (gameState) {
 		case STATE_SCREENSAVER:
-			// заставка
-
+			// screensaver
 			screensaver();
 		break;
 		case STATE_SELECT:
-			// стартовый экран
-
+			// start screen
 			if (players == 1) {
-				// надо спрятать Pac-Girl
+				// hide Pac-Girl
 				SPR_setPosition(pacGirlSprite, -100, 90);
 
-				// если выбрана игра за одного (только Pac-Man)
-				// надо нарисовать спрайт PAC-MAN перед 1 PLAYER
+				// single player game (only Pac-Man)
+				// draw PAC-MAN sprite before 1 PLAYER
 				SPR_setAnim(pacmanSprite, 0);
 				SPR_setHFlip(pacmanSprite, FALSE);
 				SPR_setPosition(pacmanSprite, 100, 100);
 			} else {
-				// если выбрана игра на 2х игроков
-				if (switchPlayers) {
-					// (1 игрок за Pac-Girl, 2 игрок за Pac-Man)
+				// two players game mode
+				if (P1_PACGIRL__P2_PACMAN == switchPlayers) {
+					// (player 1: Pac-Girl, player 2: Pac-Man)
 
-					// нарисовать спрайт PAC-Girl перед 2 PLAYERS
+					// draw PAC-Girl sprite before 2 PLAYERS
 					SPR_setAnim(pacGirlSprite, 0);
 					SPR_setHFlip(pacGirlSprite, FALSE);
 					SPR_setPosition(pacGirlSprite, 100, 113);
 
-					// нарисовать спрайт PAC-MAN после 2 PLAYERS
+					// draw PAC-MAN sprite after 2 PLAYERS
 					SPR_setAnim(pacmanSprite, 0);
 					SPR_setHFlip(pacmanSprite, TRUE);
 					SPR_setPosition(pacmanSprite, 190, 113);
 				} else {
-					 // (1 игрок за Pac-Man, 2 игрок за Pac-Girl)
+					// (player 1: Pac-Man, player 2: Pac-Girl)
 
-					// нарисовать спрайт PAC-MAN перед 2 PLAYERS
+					// draw PAC-MAN sprite before 2 PLAYERS
 					SPR_setAnim(pacmanSprite, 0);
 					SPR_setHFlip(pacmanSprite, FALSE);
 					SPR_setPosition(pacmanSprite, 100, 113);
 
-					// нарисовать спрайт PAC-Girl после 2 PLAYERS
+					// draw PAC-Girl sprite after 2 PLAYERS
 					SPR_setAnim(pacGirlSprite, 0);
 					SPR_setHFlip(pacGirlSprite, TRUE);
 					SPR_setPosition(pacGirlSprite, 190, 113);
@@ -1478,20 +1659,20 @@ void drawSprites() {
 		break;
 		case STATE_GAME:
 		case STATE_RESULT:
-			// если идет игра или показываем результаты игры
+			// game in progress or showing results
 
-			// отрисовываем спрайты игры
-			// PAC-MAN, Pac-Girl, RED или SHADOW, дверь, черешню
+			// draw game sprites:
+			// PAC-MAN, Pac-Girl, RED or SHADOW, door, cherry
 			refreshGame();
 		break;
 		case STATE_PAUSE:
-			// пауза игры
+			// game paused
 
-			// нарисвовать спрайт с словом PAUSE
+			// draw sprite with PAUSE text
 			SPR_setAnim(pauseSprite, 0);
 			SPR_setPosition(pauseSprite, pauseX, pauseY);
 
-			// нарисавать спрайт бегущего Соника
+			// draw running Sonic sprite
 			SPR_setAnim(sonicSprite, 3);
 			SPR_setPosition(sonicSprite, sonicX, sonicY);
 		break;
@@ -1502,9 +1683,9 @@ void drawSprites() {
 /**
  * SEGA
  *
- * Нарисовать только объект из карты map[i][j]
- * i - строка в массиве карты
- * j - столбец в массиве карты
+ * Draw only the object from map[i][j]
+ * i - row in the map array
+ * j - column in the map array
  */
 void draw(s16 i, s16 j) {
 	drawSprite(i, j,  map[i][j]);
@@ -1514,148 +1695,160 @@ void draw(s16 i, s16 j) {
 /**
  * SEGA
  *
- * Нарисовать переданный объект в координатах
- * i - строка в массиве карты
- * j - столбец в массиве карты
- * val - Что нарисовать в координатах
+ * Draw the passed object at coordinates
+ * i - row in the map array
+ * j - column in the map array
+ * val - What to draw at coordinates
  */
 void drawSprite(s16 i, s16 j, u8 val) {
-	// x = i * 8 и на 29 пиксела вправо
+	// x = j * 8 and 29 pixels to the right
     x = (j << 3) + 29;
 
-    // y = j * 8 и на 2 пиксела вверх
+    // y = i * 8 and 2 pixels up
     y = (i << 3) - 2;
 
     if (val == PACMAN) {
 		if (dx < 0) {
-			// движение налево PACMAN
+			// PACMAN moving left
 			SPR_setAnim(pacmanSprite, 0);
 			SPR_setHFlip(pacmanSprite, TRUE);
 			SPR_setPosition(pacmanSprite, x, y);
 		} else if (dx > 0) {
-			// движение направо PACMAN
+			// PACMAN moving right
 			SPR_setAnim(pacmanSprite, 0);
 			SPR_setHFlip(pacmanSprite, FALSE);
 			SPR_setPosition(pacmanSprite, x, y);
 		} else if (dy < 0) {
-			// движение вверх PACMAN
+			// PACMAN moving up
 			SPR_setAnim(pacmanSprite, 1);
 			SPR_setVFlip(pacmanSprite, FALSE);
 			SPR_setPosition(pacmanSprite, x, y);
 		} else if (dy > 0) {
-			// движение вниз PACMAN
+			// PACMAN moving down
 			SPR_setAnim(pacmanSprite, 1);
 			SPR_setVFlip(pacmanSprite, TRUE);
 			SPR_setPosition(pacmanSprite, x, y);
 		} else {
-			// стоит на месте PACMAN
+			// PACMAN standing still
 			SPR_setAnim(pacmanSprite, 2);
 			SPR_setPosition(pacmanSprite, x, y);
 		}
     } else if (val == RED) {
         if (dxRed < 0) {
-          	// движение налево RED
+          	// RED moving left
         	SPR_setAnim(redSprite, 0);
         	SPR_setHFlip(redSprite, TRUE);
         	SPR_setPosition(redSprite, x, y);
 		} else if (dxRed > 0) {
-			// движение направо  RED
+			// RED moving right
         	SPR_setAnim(redSprite, 0);
         	SPR_setHFlip(redSprite, FALSE);
         	SPR_setPosition(redSprite, x, y);
 		} else if (dyRed > 0) {
-			// движение вниз RED
+			// RED moving down
         	SPR_setAnim(redSprite, 2);
         	SPR_setPosition(redSprite, x, y);
 		} else if (dyRed < 0) {
-			// движение вверх RED
+			// RED moving up
 			SPR_setAnim(redSprite, 1);
         	SPR_setPosition(redSprite, x, y);
 		} else {
-			// стоит на месте RED
+			// RED standing still
 			SPR_setAnim(redSprite, 4);
         	SPR_setPosition(redSprite, x, y);
 		}
 
     } else if (val == SHADOW) {
-		// логика для проигрования звука когда можно есть
-    	// призрака
+		// logic for playing sound when ghost can be eaten
     	if (shadowLastSoundTime == 0) {
-    		// звук когда призрак съедобен
+    		// sound when ghost is edible
     		XGM_startPlayPCM(SFX_SOUND_SHADOW, 15, SOUND_PCM_CH3);
     		shadowLastSoundTime = 20;
     	}
 
     	if (dxRed != 0 || dyRed != 0) {
-    		// движение призрака
+    		// ghost moving
     		SPR_setAnim(redSprite, 3);
     		SPR_setPosition(redSprite, x, y);
     	} else {
-    		// призрак стоит
+    		// ghost standing still
     		SPR_setAnim(redSprite, 5);
     		SPR_setPosition(redSprite, x, y);
     	}
     } else if (val == PACGIRL) {
 		if (dxPacGirl < 0) {
-			// движение налево PACGIRL
+			// PACGIRL moving left
 			SPR_setAnim(pacGirlSprite, 0);
 			SPR_setHFlip(pacGirlSprite, TRUE);
 			SPR_setVFlip(pacGirlSprite, FALSE);
 			SPR_setPosition(pacGirlSprite, x, y);
 		} else if (dxPacGirl > 0) {
-			// движение направо PACGIRL
+			// PACGIRL moving right
 			SPR_setAnim(pacGirlSprite, 0);
 			SPR_setHFlip(pacGirlSprite, FALSE);
 			SPR_setVFlip(pacGirlSprite, FALSE);
 			SPR_setPosition(pacGirlSprite, x, y);
 		} else if (dyPacGirl < 0) {
-			// движение вверх PACGIRL
+			// PACGIRL moving up
 			SPR_setAnim(pacGirlSprite, 1);
 			SPR_setVFlip(pacGirlSprite, FALSE);
 			SPR_setHFlip(pacGirlSprite, FALSE);
 			SPR_setPosition(pacGirlSprite, x, y);
 		} else if (dyPacGirl > 0) {
-			// движение вниз PACGIRL
+			// PACGIRL moving down
 			SPR_setAnim(pacGirlSprite, 1);
 			SPR_setVFlip(pacGirlSprite, TRUE);
 			SPR_setHFlip(pacGirlSprite, FALSE);
 			SPR_setPosition(pacGirlSprite, x, y);
 		} else {
-			// стоит на месте PACGIRL
+			// PACGIRL standing still
 			SPR_setAnim(pacGirlSprite, 2);
 			SPR_setHFlip(pacGirlSprite, FALSE);
 			SPR_setVFlip(pacGirlSprite, FALSE);
 			SPR_setPosition(pacGirlSprite, x, y);
 		}
 
-
     } else if (val == CHERRY) {
-    	// черешня
+    	// cherry
     	SPR_setPosition(cherrySprite, x, y);
     } else if (val == DOOR) {
-    	// двеь
+    	// door
     	SPR_setPosition(doorSprite, x, y);
     }
-
 }
+
 
 /**
  * SEGA
  *
- * Обновить карту, персонажей, двери, черешню на экране
+ * Update map, characters, doors, cherry on screen
  */
 void refreshGame() {
 	if (!cherryFlag && redTime == 0 && !cherryBonus && cherryTime == 0) {
-		// открыть двери
+		// open doors
 		openDoors();
+
+		if (MODE_PORT2_MASTER == controllerPort2Mode) {
+			transferObject[0] = 0xAF;
+			transferObject[1] = 0xFA;
+			LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_OPEN_DOOR, LINK_TYPES_LENGTH);
+		}
+
 	}
 
     if (refreshDoor) {
 		if (map[doorY][doorX] != DOOR) {
 			refreshDoor = 0;
 			SPR_setPosition(doorSprite, -90, 100);
+
+			if (MODE_PORT2_MASTER == controllerPort2Mode) {
+				transferObject[0] = 0xAF;
+				transferObject[1] = 0xFA;
+				LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_OPEN_DOOR, LINK_TYPES_LENGTH);
+			}
+
 		} else {
-			// рисуем дверь
+			// draw door
 			draw(doorY, doorX);
 		}
     }
@@ -1664,221 +1857,230 @@ void refreshGame() {
 		if (map[cherryY][cherryX] != CHERRY) {
 			SPR_setPosition(cherrySprite, -90, 100);
 		} else {
-		    // рисуем черешню
+		    // draw cherry
 	    	drawSprite(cherryY, cherryX, CHERRY);
 		}
     }
 
-    // рисуем призрака RED
+    // draw RED ghost
     draw(redY, redX);
 
 
-    // рисуем Pac-Man
+    // draw Pac-Man
     draw(pacmanY, pacmanX);
 
 
-    // рисуем Pac-Girl
+    // draw Pac-Girl
     draw(pacGirlY, pacGirlX);
 }
+
 
 /**
  * SEGA
  *
- * Нарисовать задний фон
+ * Draw background
  */
 void drawBackground() {
 	switch(gameState) {
 		case STATE_SCREENSAVER:
-			// заставка
+			// screensaver
 
-			// рисуем задний фон лого SEGA из sega.png
+			// draw SEGA logo background from sega.png
 			VDP_drawImage(BG_A, &sega_image, 0, 0);
 		break;
 		case STATE_SELECT:
-			// стартовый бекграунд
+			// start screen background
 
-			// рисуем в качестве заднего фона меню выбора количества игроков из menu.png
+			// draw player selection menu as background from menu.png
 			VDP_drawImage(BG_A, &menu_image, 0, 0);
 		break;
 		default:
-			// любой другой экран
+			// any other screen
 
-			// карта уровня с лабиринтом
-			// рисуем в качестве заднего фона карту уровня из map.png
+			// level map with maze
+			// draw level map as background from map.png
 			VDP_drawImage(BG_A, &map_image, 0, 0);
 	}
 }
 
+
 /**
  * SEGA
  *
- *  Обработка нажатых кнопок игроками во время заставки, когда поедают надпись SEGA
- *  для gameState == STATE_SCREENSAVER
+ * Handle button presses by players during screensaver when they eat SEGA text
+ * for gameState == STATE_SCREENSAVER
  */
 void actionsStateScreensaver() {
-	// заставка
-	// условие окончания анимации заставки
-	// тупо закончилась анимация: Pac-Girl X координата >= 380
-	// или нажали любую кнопку на одном из Джойстиков (кроме Start)
+	// screensaver
+	// condition to end screensaver animation
+	// animation simply ended: Pac-Girl X coordinate >= 380
+	// or any button pressed on one of the joysticks (except Start)
 	if ((pacGirlX >= 380)
 			|| (pad1 & BUTTON_A)  || (pad1 & BUTTON_B) || (pad1 & BUTTON_C)
 			|| (pad1 & BUTTON_X)  || (pad1 & BUTTON_Y) || (pad1 & BUTTON_Z)
 			|| (pad2 & BUTTON_A)  || (pad2 & BUTTON_B) || (pad2 & BUTTON_C)
 			|| (pad2 & BUTTON_X)  || (pad2 & BUTTON_Y) || (pad2 & BUTTON_Z)) {
-		// нужно всех персонажей убрать с экрана
-		// для этого ставим их в начальное состояние перед запуском заставки
+		// need to remove all characters from screen
+		// for this set them to initial state before screensaver start
 		initScreensaver();
-		// выбор количества игроков для игры
+		// select number of players for game
 		gameState = STATE_SELECT;
-		// рисуем задний фон с меню выбора игроков
+		// draw background with player selection menu
 		drawBackground();
-		// останавливаем проигрывание SEGA
+		// stop playing SEGA sound
 		XGM_stopPlayPCM(SOUND_PCM_CH2);
-		// музыка играющая когда отображаем меню выбора количества игроков
+		// music playing when displaying player count selection menu
 		XGM_startPlay(contrah_vgm);
 	}
 }
 
+
 /**
  * SEGA
  *
- * Обработка нажатых кнопок игроками и логика игры во время отоброжения экрана с меню выбора количества игроков
- * для gameState == STATE_SELECT
+ * Handle button presses by players and game logic during player count selection screen display
+ * for gameState == STATE_SELECT
  */
 void actionsStateSelectPlayers() {
-	// экран выбор количества игроков
+	// player count selection screen
 
 	if (((pad1 & BUTTON_START) || (pad2 & BUTTON_START)) && playersTime == 0) {
-		// нажат Start на 1 или 2 джойстике
-		// останавливаем проигрывание музыки на экране выбора игроков
+		// Start pressed on 1st or 2nd joystick
+		// stop playing music on player selection screen
 		XGM_pausePlay();
 
-		// сбросить игру в стартовое состояние
-		// начальное положение персонажей, обнулить очки, и т.д.
-		init();
+		// reset game to initial state
+		// initial character positions, reset scores, etc.
+		resetGame();
 
 		if (players != 2) {
-			// выбрана игра за 1го (1 PLAYER)
-			// выводим на экран что соединения с другой притавкой нет, играем в одного
-			memcpy(gameModeText, "1P NO LINK!", GAME_MODE_TEXT_LENGHT);
+			// 1 player game selected (1 PLAYER)
+			
+			// the first player always controls Pac-Man in single-player mode
+			switchPlayers = P1_PACMAN__P2_PACGIRL;
+
+			// reset all inputs on 2nd controller
+			pad2 = 0;
+		
+			// display message that there is no connection with another console, playing single player
+			memcpy(gameModeText, TEXT_1P_NO_LINK, GAME_MODE_TEXT_SIZE);
 
 			if ((MODE_PORT2_MASTER == controllerPort2Mode || MODE_PORT2_SLAVE == controllerPort2Mode)) {
-				// устанавливем режим работы второго порта - не участвует в игре, игрок нашей приставки
-				// играет в одного на своей приставке контроллером подключенным в первый порт
+				// set second port mode - not participating in game, player of our console
+				// plays single player on their console with controller connected to first port
 				controllerPort2Mode = MODE_SINGLE_PLAYER;
 
-				// есть соединение по Link cable
-				// закрываем порт, данные больше не будут пересылатся через Link cable
+				// there is Link cable connection
+				// close port, data will no longer be sent via Link cable
 				LCP_close();
 
-				// сбрасываем все что нажато на 2 контроллере
-				pad2 = 0;
-
-				// защита от двойного нажатия на start
+				// protection against double start press
 				playersTime = 30;
 
-				// звук разъединения соединения
+				// connection disconnect sound
 				XGM_startPlayPCM(SFX_SOUND_DISCONNECT_LINK_CABLE, 15, SOUND_PCM_CH3);
 
-				// включаем музыку когда отображаем меню выбора количества игроков
+				// enable music when displaying player count selection menu
 				XGM_startPlay(contrah_vgm);
 
-				// выходим, игру пока не начинаем надо еще раз нажать на start
+				// exit, don't start game yet, need to press start again
 				return;
 			}
-			// игрок 1 убираем с карты PAC-GIRL
+			// remove PAC-GIRL from map for player 1
 			map[pacGirlY][pacGirlX] = FOOD;
 		} else {
-			// выбрана игра на 2их (2 PLAYERS)
+			// 2 player game selected (2 PLAYERS)
 
 			if (!(MODE_PORT2_MASTER == controllerPort2Mode || MODE_PORT2_SLAVE == controllerPort2Mode)) {
-				// если еще не определили что у нас воткнуто во 2 порт приставки
-				// или это режимы отличные от игры в 2м по Link cable
-				// определяем что воткнуто (контроллер, Link cable или ничего)
-				// и кем будет какая приставка (ведущей - master, ведомой - slave)
+				// if not yet determined what is plugged into console's 2nd port
+				// or these are modes other than 2-player Link cable game
+				// determine what is plugged in (controller, Link cable or nothing)
+				// and which console will be which (master, slave)
 				initControllerPort2();
 			}
 
 			if (controllerPort2Mode == MODE_SINGLE_PLAYER) {
-				// не удалось запустить игру на 2х
-				// нет соединения через Link cabile
-				// и не вставлен 2 контроллер в 2 порт SEGA
+				// failed to start 2-player game
+				// no Link cable connection
+				// and no 2nd controller inserted in SEGA port 2
 
-			   // включаем музыку когда отображаем меню выбора количества игроков
+			   // enable music when displaying player count selection menu
 			   XGM_startPlay(contrah_vgm);
 
 			   return;
 			}
 
-			// надо дать очки за точку
-			// которая на месте PAC-GIRL была
+			// need to give points for the dot
+			// that was in PAC-GIRL's place
 			incFood();
 		}
 
-		// начинаем иру
+		// start game
 		gameState = STATE_GAME;
 
-		// рисуем задний фон с лабиринтом для игры
+		// draw background with maze for game
 		drawBackground();
 
-		// музыка играющая во время игры
+		// music playing during game
 		XGM_startPlay(comicszone_vgm);
 
-		// повторное нажатие на разрешено только через 30 секунд (чтоб сразу не нажалась пауза)
+		// repeated press allowed only after 30 frames (to prevent immediate pause)
 		playersTime = 30;
 		return;
 	}
 
 
-	// 1 или 2 игрока будут играть - выбор стрелочками
+	// 1 or 2 players will play - selection with arrow buttons
 	if (((pad1 & BUTTON_DOWN) || (pad2 & BUTTON_DOWN)) && (players == 1)) {
-		// Нажата кнопка вверх на 1 или 2 джойстике
+		// Down button pressed on 1st or 2nd joystick
 		players = 2;
 		return;
 	}
 
 
 	if (((pad1 & BUTTON_UP) || (pad2 & BUTTON_UP)) && (players == 2)) {
-		// Нажата кнопка вниз на 1 или 2 джойстике
+		// Up button pressed on 1st or 2nd joystick
 		players = 1;
 		return;
 	}
 
-	if (((pad1 & BUTTON_RIGHT) || (pad2 & BUTTON_RIGHT)) && (switchPlayers == 0) && (players == 2)) {
-		// Нажата кнопка вправо на 1 или 2 джойстике
-		switchPlayers = 1;
+	if (((pad1 & BUTTON_RIGHT) || (pad2 & BUTTON_RIGHT)) && (switchPlayers == P1_PACMAN__P2_PACGIRL) && (players == 2)) {
+		// Right button pressed on 1st or 2nd joystick
+		switchPlayers = P1_PACGIRL__P2_PACMAN;
 		return;
 	}
 
-	if (((pad1 & BUTTON_LEFT) || (pad2 & BUTTON_LEFT)) && (switchPlayers == 1) && (players == 2)) {
-		// Нажата кнопка влево на 1 или 2 джойстике
-		switchPlayers = 0;
+	if (((pad1 & BUTTON_LEFT) || (pad2 & BUTTON_LEFT)) && (switchPlayers == P1_PACGIRL__P2_PACMAN) && (players == 2)) {
+		// Left button pressed on 1st or 2nd joystick
+		switchPlayers = P1_PACMAN__P2_PACGIRL;
 		return;
 	}
 }
 
+
 /**
  * SEGA
  *
- * Обработка нажатых кнопок игроками и логика игры во время паузы
- * для gameState == STATE_PAUSE
+ * Handle button presses by players and game logic during pause
+ * for gameState == STATE_PAUSE
  */
 void actionsStatePause() {
-	if (((pad1 & BUTTON_START) || (pad2 & BUTTON_START)) && playersTime == 0) {
-		gameState = STATE_GAME;
-		playersTime = 30;
-		SPR_setPosition(pauseSprite, -100, -100);
-		SPR_setPosition(sonicSprite, -100, -100);
+	if (((pad1 & BUTTON_START) || (pad2 & BUTTON_START)) && playersTime == 0 && MODE_PORT2_SLAVE != controllerPort2Mode) {
+		resumeGame();
+		if (MODE_PORT2_MASTER == controllerPort2Mode) {
+			// send message to slave console to exit pause mode
+			LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_RESUME_GAME, LINK_TYPES_LENGTH);
+		}
 		return;
 	}
 
-	sonicX+=dxSonic;
+	sonicX += dxSonic;
 
 	if (sonicX > 340) {
 		dxSonic = 0;
 
-		pauseX+=pauseDX;
-		pauseY+=pauseDY;
+		pauseX += pauseDX;
+		pauseY += pauseDY;
 
 		if (pauseY <= -18 || pauseY >= 200) {
 			pauseDY = -pauseDY;
@@ -1889,135 +2091,128 @@ void actionsStatePause() {
 		}
 
 	} else {
-		pauseX+= (dxSonic - 1);
+		pauseX += (dxSonic - 1);
 	}
 }
+
 
 /**
  * SEGA
  *
- * Обработка нажатых кнопок игроками и логика игры во время непосредственно игры
- * для gameState == STATE_GAME
+ * Handle button presses by players and game logic during actual gameplay
+ * for gameState == STATE_GAME
  */
 void actionsStateGame() {
+	if (MODE_PORT2_SLAVE != controllerPort2Mode) {
+		// if not slave console, then game logic needs to be executed
+		if (((pad1 & BUTTON_START) || (pad2 & BUTTON_START)) && playersTime == 0) {
+			// start pressed on 1st or 2nd controller, with multi-press protection
+			pause();
+			if (MODE_PORT2_MASTER == controllerPort2Mode) {
+				// send message to slave console to enter pause mode
+				LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_PAUSE, LINK_TYPES_LENGTH);
+			}
 
-	if (((pad1 & BUTTON_START) || (pad2 & BUTTON_START))  && playersTime == 0) {
-		gameState = STATE_PAUSE;
-		playersTime = 30;
-		SPR_setPosition(pacGirlSprite, -100, -100);
-		SPR_setPosition(pacmanSprite, -100, -100);
-		SPR_setPosition(redSprite, -100, -100);
-		dxSonic = 8;
-		sonicX = -10;
-		pauseX = -60;
-		pauseY = sonicY;
-		return;
-	}
-
-	if (controllerPort2Mode == MODE_PORT2_SLAVE) {
-		// нужно обновить у ведомой приставки (slave) карту
-
-		refreshSlaveGame();
-	} else {
-		// если не ведомая приставка (slave), то нужно чтоб отработала логика игры
+			return;
+		}
 
 		if (pad1 &  BUTTON_LEFT) {
-			// нажата кнопка влеао на 1 джойстике
+			// left button pressed on 1st joystick
 			dx = -1;
 			dy = 0;
 		}
 
 		if (pad1 & BUTTON_RIGHT) {
-			// нажата кнопка вправо на 1 джойстике
+			// right button pressed on 1st joystick
 			dx = 1;
 			dy = 0;
 
 		}
 
 		if (pad1 & BUTTON_UP) {
-			// нажата кнопка вверх на 1 джойстике
+			// up button pressed on 1st joystick
 			dy = -1;
 			dx = 0;
 		}
 
 		if (pad1 & BUTTON_DOWN) {
-			// нажата кнопка вниз на 1 джойстике
+			// down button pressed on 1st joystick
 			dy = 1;
 			dx = 0;
 		}
 
 		if (pad2 & BUTTON_UP) {
-			// нажата кнопка вверх на 2 джойстике
+			// up button pressed on 2nd joystick
 			dyPacGirl = -1;
 			dxPacGirl = 0;
 		}
 
 		if (pad2 & BUTTON_DOWN) {
-			// нажата кнопка вниз на 2 джойстике
+			// down button pressed on 2nd joystick
 			dyPacGirl = 1;
 			dxPacGirl = 0;
 		}
 
 		if (pad2 & BUTTON_LEFT) {
-			// нажата кнопка влево на 2 джойстике
+			// left button pressed on 2nd joystick
 			dxPacGirl = -1;
 			dyPacGirl = 0;
 		}
 
 		if (pad2 & BUTTON_RIGHT) {
-			// нажата кнопка вправо на 2 джойстике
+			// right button pressed on 2nd joystick
 			dxPacGirl = 1;
 			dyPacGirl = 0;
 		}
 
-		// двигаем Pac-Man
+		// move Pac-Man
 		if (!pacManState()) {
-			// игра окончена
+			// game over
 			gameState = STATE_RESULT;
 			return;
 		}
 
-		// двигаем RED
+		// move RED
 		if (!redState()) {
-			// игра окончена
+			// game over
 			gameState = STATE_RESULT;
 			return;
 		}
 
 
-		// двигаем Pac-Girl
+		// move Pac-Girl
 		if (!pacGirlState()) {
-			// игра окончена
+			// game over
 			gameState = STATE_RESULT;
 			return;
 		}
 
 
 		if (redLastUpdateTime > 0) {
-			// счетчик для анимации RED и SHADOW
+			// counter for RED and SHADOW animation
 			--redLastUpdateTime;
 		}
 
 
 		if (cherryTime > 0) {
-			// счетчик когда надо показать черешню
-			// и отрыть к ней дверь
+			// counter for when to show cherry
+			// and open door to it
 			--cherryTime;
 		}
 
 		if (redTime > 0) {
-			// счетчик когда SHADOW вновь станет RED
+			// counter for when SHADOW becomes RED again
 			--redTime;
 		}
 	}
 
 	if (pacmanLastUpdateTime > 0 ) {
-		// счетчик для анимации Pac-Man
+		// counter for Pac-Man animation
 		--pacmanLastUpdateTime;
 	}
 
 	if (pacGirlLastUpdateTime > 0) {
-		// счетчик для анимации Pac-Girl
+		// counter for Pac-Girl animation
 		--pacGirlLastUpdateTime;
 	}
 
@@ -2026,90 +2221,92 @@ void actionsStateGame() {
 	}
 }
 
+
 /**
  * SEGA
  *
- * Обработка нажатых кнопок игроками и логика игры когда показываем экран с результатом после окончаня игры
- * gameState == STATE_RESULT
+ * Handle button presses by players and game logic when showing results screen after game ends
+ * for gameState == STATE_RESULT
  */
 void actionsStateResult() {
 	if ((pad1 & BUTTON_START) || (pad2 & BUTTON_START)) {
-		// показываем результат игры  и на этом экране
-		// нажат Start на 1 или 2 джойстике
-		// переходим на экран заставки
+		// showing game results on this screen
+		// Start pressed on 1st or 2nd joystick
+		// transition to screensaver screen
 		gameState = STATE_SCREENSAVER;
-		// защита от 2го нажатия кнопки Start
+		// protection against repeated Start button press
 		playersTime = 30;
-		// нужно всех персонажей убрать с экрана
-		// для этого ставим их в начальное состояние перед запуском заставки
+		// need to remove all characters from screen
+		// for this set them to initial state before screensaver start
 		initScreensaver();
-		// нарисовать SEGA на заднем фоне
+		// draw SEGA on background
 		drawBackground();
-		// останавливаем проигрывание музыки
+		// stop playing music
 		XGM_stopPlay();
-		// проигрываем звук SEGA!
+		// play SEGA sound!
 		XGM_startPlayPCM(SFX_SOUND_SEGA, 15, SOUND_PCM_CH2);
 	}
 }
 
+
 /**
- *  SEGA
+ * SEGA
  *
- *  Обработка нажатых кнопок игроком и основная логика игры на основании действий игроков
+ * Handle button presses by player and main game logic based on player actions
  */
 void actions() {
 
-	// задержка для обработки нажатия кнопок (если нужна)
+	// delay for button press processing (if needed)
 	if (playersTime > 0) {
-		// защита от двойного нажатия,
-		// когда playersTime станет равным 0 обработчик заработает  опять
+		// protection against double press,
+		// when playersTime becomes 0, handler will work again
 		--playersTime;
 	}
 
 
 	if (((pad1 & BUTTON_A) && (pad1 & BUTTON_C)) || ((pad2 & BUTTON_A) && (pad2 & BUTTON_C))) {
-		// вывод на экран ошибок при работе с Link cable protocol
+		// display Link cable protocol errors on screen
 		showLinkCableErrors = SHOW_LINK_CABLE_LAST_ERROR;
 	}
 
 	if (((pad1 & BUTTON_B) && (pad1 & BUTTON_C)) || ((pad2 & BUTTON_B) && (pad2 & BUTTON_C))) {
-		// вывод на экран количества ошибок при работе с Link cable protocol
-		showLinkCableErrors = SHOW_LINK_CABLE_ERROS_COUNT;
+		// display error count for Link cable protocol on screen
+		showLinkCableErrors = SHOW_LINK_CABLE_ERRORS_COUNT;
 	}
 
 	if (((pad1 & BUTTON_A) && (pad1 & BUTTON_X)) || ((pad2 & BUTTON_A) && (pad2 & BUTTON_X))) {
-		// вывод на экран количества ошибок при работе с Link cable protocol
+		// display error count for Link cable protocol on screen
 		showLinkCableErrors = SHOW_LINK_CABLE_FRAME_COUNT;
 	}
 
 	if (((pad1 & BUTTON_A) && (pad1 & BUTTON_B)) || ((pad2 & BUTTON_A) && (pad2 & BUTTON_B))) {
-		// сброс ошибок при передаче данных в 0 на экране
+		// reset data transfer errors to 0 on screen
 		linkCableErrors = 0;
-		// сброс количества ошибок
+		// reset error count
 		linkCableErrorsCount = 0;
-		// сброс количества кадров
+		// reset frame count
 		linkCableFrameCount = 0;
 	}
 
 	switch (gameState) {
 		case STATE_SCREENSAVER:
-				// заставка
+				// screensaver
 				actionsStateScreensaver();
 		break;
 		case STATE_SELECT:
-				// экран выбор количества игроков
+				// player count selection screen
 				actionsStateSelectPlayers();
 		break;
 		case STATE_PAUSE:
-				// пауза (при нажатии start во время игры)
+				// pause (when start pressed during game)
 				actionsStatePause();
 		break;
 		case STATE_GAME:
-				// идет ира
+				// game in progress
 				actionsStateGame();
 		break;
 		case STATE_RESULT:
-				// результат игры
+				// game result
 				actionsStateResult();
 		break;
 	}
@@ -2119,8 +2316,8 @@ void actions() {
 /**
  * SEGA
  *
- * сбрасываем значения переменных для отображения заставкии
- * и отрисовываем их в новых местах
+ * Reset variable values for screensaver display
+ * and draw them in new positions
  */
 void initScreensaver() {
     sonicX = -95;
@@ -2149,40 +2346,42 @@ void initScreensaver() {
 	SPR_setHFlip(pacGirlSprite, FALSE);
 	SPR_setVFlip(pacGirlSprite, FALSE);
 
-    // соник идет - 2 строчка анимации в файле sonic.png если считать с 0
+    // sonic walking - line 2 of animation in sonic.png file counting from 0
     SPR_setAnim(sonicSprite, 2);
 
-    // изменяем позицию спрайта Соника
+    // change Sonic sprite position
     SPR_setPosition(sonicSprite, sonicX, sonicY);
 
-    // изменяем позицию спрайта Pac-Man
+    // change Pac-Man sprite position
     SPR_setPosition(pacmanSprite, pacmanX, pacmanY);
 
-    // изменяем позицию спрайта RED
+    // change RED sprite position
     SPR_setPosition(redSprite, redX, redY);
 
-    // изменяем позицию спрайта Pac-Girl
+    // change Pac-Girl sprite position
     SPR_setPosition(pacGirlSprite, pacGirlX, pacGirlY);
 
-	// скрыть черешню
+	// hide cherry
 	SPR_setPosition(cherrySprite, -90, 100);
 
-	// скрыть дверь
+	// hide door
 	SPR_setPosition(doorSprite, -90, 100);
 }
+
 
 /**
  * SEGA
  *
- * отображаем заставку
- * SEGA которую съест Pac-Man и Pac-Girl
+ * display screensaver
+ * Sonic running away from Pac-Man and SEGA text that will be eaten by Pac-Man and Pac-Girl
+ * then Pac-Man runs away from ghost
  */
 void screensaver() {
    SPR_setAnim(pacmanSprite, 0);
    SPR_setAnim(redSprite, 0);
    SPR_setAnim(pacGirlSprite, 0);
 
-   // отоброзить по горизонтали спрайт RED
+   // flip RED sprite horizontally
    SPR_setHFlip(redSprite, TRUE);
 
    if (dx < 0) {
@@ -2191,34 +2390,34 @@ void screensaver() {
 	   SPR_setHFlip(pacmanSprite, FALSE);
    }
 
-   // задаем какую анимацию использовать
+   // set which animation to use
    if (sonicX <= 30)  {
-	   // соник идет - 2 строчка анимации в файле sonic.png если считать с 0
+	   // sonic walking - line 2 of animation in sonic.png file counting from 0
 	   SPR_setAnim(sonicSprite, 2);
    } else if (sonicX <= 50)  {
 	   dxSonic = 2;
-	   // соник идет - 2 строчка анимации в файле sonic.png если считать с 0
+	   // sonic walking - line 2 of animation in sonic.png file counting from 0
 	   SPR_setAnim(sonicSprite, 2);
    } else if (sonicX <= 70) {
 	   dxSonic = 3;
-	   // соник идет - 2 строчка анимации в файле sonic.png если считать с 0
+	   // sonic walking - line 2 of animation in sonic.png file counting from 0
 	   SPR_setAnim(sonicSprite, 2);
 	   XGM_startPlay(sonic_vgm);
    } else if (sonicX <= 120) {
 	   dxSonic = 5;
-	   // соник бежит - 3 строчка анимации в файле sonic.png
+	   // sonic running - line 3 of animation in sonic.png file
 	   SPR_setAnim(sonicSprite, 3);
    } else {
 	   dxSonic = 6;
-	   // появляется RED
+	   // RED appears
 	   dxRed = -1;
 	   dxPacGirl = 1;
-	   // соник бежит - 3 строчка анимации в файле sonic.png
+	   // sonic running - line 3 of animation in sonic.png file
 	   SPR_setAnim(sonicSprite, 3);
    }
 
    if (pacmanX > 90 && pacmanX < 190 && dx > 0) {
-	   // звук поедания
+	   // eating sound
 	   if (pacmanLastUpdateTime <= 0) {
 		   XGM_startPlayPCM(SFX_SOUND_EAT, 15, SOUND_PCM_CH2);
 		   pacmanLastUpdateTime = 10;
@@ -2237,228 +2436,379 @@ void screensaver() {
    }
 
    if (sonicX < 320) {
-	   // вычисляем новые координаты нахождения Соника
+	   // calculate new Sonic coordinates
 	   sonicX += dxSonic;
    }
 
    if (pacmanX < 210) {
-	   // вычисляем новые координаты нахождения Pac-Man
+	   // calculate new Pac-Man coordinates
 	   pacmanX += dx;
    } else {
-	   // пора убегать от RED
+	   // time to run away from RED
 	   dx = -1;
 	   pacmanX = 209;
    }
 
    if (redX > -16) {
-	   // вычисляем новые координаты нахождения RED
+	   // calculate new RED coordinates
 	   redX += dxRed;
    }
 
    pacGirlX+= dxPacGirl;
 
 
-   // изменяем позицию спрайта Соника
+   // change Sonic sprite position
    SPR_setPosition(sonicSprite, sonicX, sonicY);
 
-   // изменяем позицию спрайта Pac-Man
+   // change Pac-Man sprite position
    SPR_setPosition(pacmanSprite, pacmanX, pacmanY);
 
-   // изменяем позицию спрайта RED
+   // change RED sprite position
    SPR_setPosition(redSprite, redX, redY);
 
-   // изменяем позицию спрайта Pac-Girl
+   // change Pac-Girl sprite position
    SPR_setPosition(pacGirlSprite, pacGirlX, pacGirlY);
 
 
-   // стираем на фоне то что съел Pac-Man
+   // erase on background what Pac-Man ate
    if (pacmanX >=0 && pacmanX <= 320) {
-	   // рисуем tile на бакграунде в координатах Pac-Man (он съест SEGA)
+	   // draw tile on background at Pac-Man coordinates (he will eat SEGA)
 	   VDP_setTileMapXY(BG_A, 1, (pacmanX/8), (pacmanY/8));
 	   VDP_setTileMapXY(BG_A, 1, (pacmanX/8), (pacmanY/8) + 1);
    }
 
    if (pacGirlX >= 0 && pacGirlX <= 320) {
-	   // рисуем tile на бакграунде в координатах Pac-Girl (он съест SEGA)
+	   // draw tile on background at Pac-Girl coordinates (he will eat SEGA)
 	   VDP_setTileMapXY(BG_A, 1, (pacGirlX/8), (pacGirlY/8));
 	   VDP_setTileMapXY(BG_A, 1, (pacGirlX/8), (pacGirlY/8) + 1);
    }
 
 }
 
+
 /**
  * SEGA
  *
- * Определение что было нажато игроками на контроллерах. В случае игры через Link Cable получаем что
- * было нажато на первом контролере подключеном у другой приставке.
- * Анализ объектов в пришедших пакетах по Link Cable, тоже происходит тут и для ведущей (master) и
- * для ведомой (slave) приставки.
+ * Switch game to pause mode
+ */
+void pause() {
+	gameState = STATE_PAUSE;
+	playersTime = 30;
+	SPR_setPosition(pacGirlSprite, -100, -100);
+	SPR_setPosition(pacmanSprite, -100, -100);
+	SPR_setPosition(redSprite, -100, -100);
+	dxSonic = 8;
+	sonicX = -10;
+	pauseX = -60;
+	pauseY = sonicY;
+}
+
+
+/**
+ * SEGA
  *
- * pad1 - игрок управляющий Pac-Man. Что нажато на 1 контролере при игре на одной приставке.
- *        При игре через Link cable по умолчанию в pad1 будет что нажато на ведущей приставке (master)
- *        на 1 контроллере, так же игра за Pac-Man.
+ * Exit from pause, i.e. change state to continue game
+ */
+void resumeGame() {
+	gameState = STATE_GAME;
+	playersTime = 30;
+	SPR_setPosition(pauseSprite, -100, -100);
+	SPR_setPosition(sonicSprite, -100, -100);
+}
+
+
+/**
+ * SEGA
  *
- * pad2 - игрок управляющий Pac-Girl. Что нажато на 2 контролере при игре на одной приставке.
- *        При игре через Link cable по умолчанию в pad2 будет что нажато на ведомой приставке (slave)
- *        на 1 контроллере, так же ига за Pac-Girl
+ * Playing on two consoles and our master console
+ * send to slave console what was pressed on our controller
+ * in case of character switching when selecting player count, send who plays which character
+ * and also send all packet objects that haven't been sent yet
+ * then parse what was received from slave console, specifically what was pressed on the controller
+ * of the other console
+ */
+void masterControls() {
+	// assume nothing is pressed on 2nd controller
+	pad2 = 0;
+
+	if (pad1) {
+		// put in transferObject an object containing information about pressed buttons on 1st controller of our console
+		// i.e. there will be OBJECT_TYPE_JOY object as byte array (if something was pressed)
+		padToTransferObject(pad1);
+
+
+		// add OBJECT_TYPE_JOY object to packet that will be sent to other console when calling LCP_masterCycle()
+		LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_JOY, LINK_TYPES_LENGTH);
+	}
+
+	if (STATE_SELECT == gameState) {
+		// send information about which player plays which character
+		// if switchPlayers == 0 - master is Pac-Man,  slave is Pac-Girl
+		// if switchPlayers == 1 - master is Pac-Girl, slave is Pac-Man
+		transferObject[0] = switchPlayers;
+
+		// add OBJECT_TYPE_SWITCH_PLAYERS object to packet, will be sent to other console when calling LCP_masterCycle()
+		LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_SWITCH_PLAYERS, LINK_TYPES_LENGTH);
+	}
+
+	// send packet with data from our master console to slave console
+	// via Link Cable (slave console will receive external interrupt EX-INT - External interrupt)
+	// also in the same method receive from slave console packet with data for our console
+	LCP_masterCycle();
+
+	do {
+		// try to get next object from received packet from slave console into transferObject
+		objectType = LCP_getNextObjectFromReceivePacket(transferObject, LINK_TYPES_LENGTH);
+		if (OBJECT_TYPE_JOY == objectType) {
+			// the one playing on the other console, slave - second player by default plays as Pac-Girl
+			// therefore what was pressed on the first controller of the other console we save in pad2
+			pad2 = getPadFromTransferObject();
+
+			// BUT if in '2 PLAYERS' menu RIGHT was pressed before game (switchPlayers == 1), then second
+			// player will play as Pac-Man because at the end of this function pad1 and pad2 will be swapped in this case
+		}
+	} while (objectType != 0);
+
+}
+
+
+/**
+ * SEGA
  *
- * НО если в мню '2 PLAYERS' нажать вправо то pad1 и pad2 поменяются местами! Т.е. когда
- * switchPlayers == 1 и players == 2 игроки будут играть за противоположенных персонажей!
+ * Playing on two consoles and our slave console
+ * save to packet for sending to master console what was pressed on our controller
+ * packet will be sent asynchronously when external interrupt occurs initiated by master console
+ * at random moment in time for our console (external interrupt handler - function LCP_slaveCycle() from link_cable.c library)
+ * parse what was received from master console during previous external interrupt call (LCP_slaveCycle())
+ */
+void slaveControls() {
+	// we play as second player, therefore what is pressed on first controller
+	// we save to variable of 2nd controller
+	pad2 = pad1;
+
+	if (pad1) {
+		// put in transferObject an object containing information about pressed buttons on 1st controller of our console
+		// i.e. there will be OBJECT_TYPE_JOY object as byte array (if something was pressed)
+		padToTransferObject(pad1);
+
+		// add OBJECT_TYPE_JOY object to packet that will be sent to other console when calling LCP_slaveCycle()
+		// at the moment of receiving external interrupt called by master console at random moment in time for us
+		LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_JOY, LINK_TYPES_LENGTH);
+	}
+
+	// assume that nothing is pressed on 1st controller at the moment
+	pad1 = 0;
+
+	do {
+		// try to get next object from received packet from master console into transferObject
+		objectType = LCP_getNextObjectFromReceivePacket(transferObject, LINK_TYPES_LENGTH);
+		switch (objectType) {
+			case OBJECT_TYPE_JOY:
+				// the one playing on the other console, master - first player by default plays as Pac-Man
+				// therefore what was pressed on the first controller of the other console we save in pad1
+				pad1 = getPadFromTransferObject();
+
+				// BUT if in '2 PLAYERS' menu RIGHT was pressed before game (switchPlayers == 1), then first
+				// player will play as Pac-Girl because at the end of this function pad1 and pad2 will be swapped in this case
+			break;
+			case OBJECT_TYPE_SWITCH_PLAYERS:
+				if (STATE_SELECT == gameState) {
+					// received information about which player plays which character
+					switchPlayers = transferObject[0];
+				}
+			break;
+			case OBJECT_TYPE_PAC_MAN_STATE:
+				// received dx, dy, pacmanX, pacmanY, oldX, oldY from master console
+				pacManStateFromTransferObject();
+				drawSprite(pacmanY, pacmanX, PACMAN);
+				drawBlackBox(oldY, oldX);
+			break;
+			case OBJECT_TYPE_PAC_GIRL_STATE:
+				// received dxPacGirl, dyPacGirl, pacGirlX, pacGirlY, oldPacGirlX, oldPacGirlY from master console
+				pacGirlStateFromTransferObject();
+				drawSprite(pacGirlY, pacGirlX, PACGIRL);
+				drawBlackBox(oldPacGirlY, oldPacGirlX);
+			break;
+			case OBJECT_TYPE_RED_STATE:
+				// received dxRed, dyRed, redX, redY, redFlag from master console
+				redStateFromTransferObject();
+				if (redFlag) {
+					drawSprite(redY, redX, RED);
+				} else {
+					drawSprite(redY, redX, SHADOW);
+				}
+			break;
+			case OBJECT_TYPE_END_GAME:
+				// received game end event from master console
+				// if our console is still in game state, need to play win or lose sound
+
+				// immobilize everyone
+				dxRed = 0;
+				dyRed = 0;
+				dx = 0;
+				dy = 0;
+				dxPacGirl = 0;
+				dyPacGirl =0;
+
+				if (winner()) {
+					// game end sound - won
+					XGM_startPlay(victory_vgm);
+				} else {
+					// Pac-Man was eaten
+					map[pacmanY][pacmanX] = RED;
+					// remove Pac-Man sprite from screen (we were eaten)
+					SPR_setPosition(pacmanSprite, -90, 90);
+					// game end sound - lost
+					XGM_startPlay(fatality_vgm);
+				}
+
+				// calculate earned points
+				calcScore();
+
+				// change game state to show results (game over)
+				gameState = STATE_RESULT;
+			break;
+			case OBJECT_TYPE_PAUSE:
+				// master console notified that need to enter pause mode
+				pause();
+			break;
+			case OBJECT_TYPE_RESUME_GAME:
+				// master console notified that need to continue game
+				resumeGame();
+			break;
+			case OBJECT_TYPE_EAT_POINT:
+				// master console notified that food was eaten
+				incFood();
+			break;
+			case OBJECT_TYPE_EAT_POWERUP:
+				// master console notified that powerup was eaten
+				// powerup eating sound
+				XGM_startPlayPCM(SFX_SOUND_POWERUP, 15, SOUND_PCM_CH2);
+
+				// RED became edible
+				redTime = RED_TIME;
+
+				// and give additional bonus
+				++powerBonus;
+			break;
+			case OBJECT_TYPE_EAT_SHADOW:
+				// master console notified that ghost was eaten
+				// ghost eating sound
+				XGM_startPlayPCM(SFX_SOUND_EAT_SHADOW, 15, SOUND_PCM_CH2);
+
+				// close door to ghost house
+				closeDoors();
+
+		    	// hide cherry
+		    	SPR_setPosition(cherrySprite, -90, 100);
+
+		       	// let it stay in house additional time
+		        redTime = RED_TIME;
+
+				// give bonus for eating RED
+				++redBonus;
+			break;
+			case OBJECT_TYPE_EAT_CHERRY:
+				// master console notified that cherry was eaten
+				// cherry eating sound
+				XGM_startPlayPCM(SFX_SOUND_CHERRY, 15, SOUND_PCM_CH2);
+
+				// hide cherry
+				SPR_setPosition(cherrySprite, -90, 100);
+
+				// give bonus for cherry
+				++cherryBonus;
+			break;
+			case OBJECT_TYPE_OPEN_DOOR:
+				// master console notified that need to open door to ghost house
+				openDoors();
+			break;
+		}
+	} while (objectType != 0);
+}
+
+
+/**
+ * SEGA
+ *
+ * Determine what was pressed by players on controllers. In case of playing via Link Cable we get what
+ * was pressed on the first controller connected to the other console.
+ * Analysis of objects in incoming packets via Link Cable also happens here for both master and
+ * slave console.
+ *
+ * pad1 - player controlling Pac-Man. What is pressed on 1st controller when playing on one console.
+ *        When playing via Link Cable by default in pad1 will be what is pressed on master console
+ *        on 1st controller, also playing as Pac-Man.
+ *
+ * pad2 - player controlling Pac-Girl. What is pressed on 2nd controller when playing on one console.
+ *        When playing via Link Cable by default in pad2 will be what is pressed on slave console
+ *        on 1st controller, also playing as Pac-Girl
+ *
+ * BUT if in '2 PLAYERS' menu RIGHT is pressed then pad1 and pad2 will be swapped! I.e. when
+ * switchPlayers == 1 and players == 2 players will play as opposite characters!
  *
  */
 void controls() {
-	// тип объекта передаваемого через Link Cable Protocol
-	u16 objectType = 0;
-
-	// буферная переменная используется в случае емли игроки поменяли кто кем будет играть в меню '2 PLAYERS'
-	// нужна чтоб поменять местами pad1 и pad2
+	// buffer variable used in case if players changed who plays which character in '2 PLAYERS' menu
+	// needed to swap pad1 and pad2
 	u16 switchPad;
 
-	// ошибка при передачи данных
+	// data transmission error
 	u16 lcpError = 0;
 
-	// что нажато на 1 джойстике
+	// what is pressed on 1st joystick
 	pad1 = JOY_readJoypad(JOY_1);
 
-	// определяем режим в которой работает приставка
+	// determine the mode in which the console operates
 	switch (controllerPort2Mode) {
-		case MODE_MULTY_PLAYER:
-			// multiplayer нет соединения между приставками по Link cable  но в втором порту 3 или 6
-			// кнопочний контроллер. Второй игрок по умолчанию играет за PAC-GIGL этим контроллером
-			// НО если в меню '2 PLAYERS' было нажато ВПРАВО перед игрой (switchPlayers == 1), то за Pac-Man
-			// т.к. в конце этой функции pad1 и pad2 будут поменяны в этом случае
+		case MODE_MULTI_PLAYER:
+			// multiplayer no connection between consoles via Link Cable but in second port 3 or 6
+			// button controller. Second player by default plays as PAC-GIRL with this controller
+			// BUT if in '2 PLAYERS' menu RIGHT was pressed before game (switchPlayers == 1), then as Pac-Man
+			// because at the end of this function pad1 and pad2 will be swapped in this case
 
-			// что нажато на 2 контроллере в pad2
+			// what is pressed on 2nd controller in pad2
 			pad2 = JOY_readJoypad(JOY_2);
 		break;
 		case MODE_PORT2_MASTER:
-			// master - наша приставка ведущая, игра в двоем через Link cable (сетевая ига на двух приставках SEGA)
-			// играем за первого игрока PAC-MAN
+			// master - our console is master, playing together via Link Cable (network game on two SEGA consoles)
+			// we play as first player PAC-MAN but if in '2 PLAYERS' menu characters were changed then as PAC-Girl
 
-			// считаем что на 2 контроллере ничего не нажато
-			pad2 = 0;
-
-			if (pad1) {
-				// в transferObject положим объект содержащий информацию о нажатых кнопках на 1 контроллере нашей приставки
-				// т.е. там будет лежать объект OBJECT_TYPE_JOY в виде байтового массива (если что то было нажато)
-				padToTransferObject(pad1);
-
-
-				// добавим объект OBJECT_TYPE_JOY в пакет который будет передан другой приставке при вызове LCP_masterCycle()
-				LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_JOY, LINK_TYPES_LENGHT);
-			}
-
-			if (STATE_SELECT == gameState) {
-				// отправляем информацию какой игрок кем играет
-				// если switchPlayers == 0 - master это Pac-Man,  slave это Pac-Girl
-				// если switchPlayers == 1 - master это Pac-Girl, slave это Pac-Man
-				transferObject[0] = switchPlayers;
-
-				// добавим объект OBJECT_TYPE_SWITCH_PLAYERS в пакет, будет передан другой приставке при вызове LCP_masterCycle()
-				LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_SWITCH_PLAYERS, LINK_TYPES_LENGHT);
-			}
-
-			if (STATE_GAME == gameState || STATE_RESULT == gameState) {
-				// игра продолжается, надо сообщить ведомой приставке текущее состояние игры
-				// в transferObject положим объект OBJECT_TYPE_GAME_STATE в виде байтового массива
-				gameStateToTransferObject();
-
-				// добавим объект OBJECT_TYPE_GAME_STATE в пакет который будет передан другой приставке
-				LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_GAME_STATE, LINK_TYPES_LENGHT);
-			}
-
-			// передаем пакет с даннми от нашей ведущей приставки (master) ведомой приставке (slave)
-			// через Link cable (у ведомой приставки произойдет внешнее прерывание EX-INT - External interrupt)
-			// также в этом же методе получаем от ведомой приставки (slave) пакет с данными для нашей
-			LCP_masterCycle();
-
-			do {
-				// пытаемся из полученного пакета данных от ведомой приставки (slave) достать очередной объект в transferObject
-				objectType = LCP_getNextObjectFromRecivePacket(transferObject, LINK_TYPES_LENGHT);
-				if (OBJECT_TYPE_JOY == objectType) {
-					// тот кто играет на другой приставке, ведомой (slave) - второй игрок по умолчанию играет за Pac-Girl
-					// поэтому что было нажато на первом контролере другой приставки сохоаняем в pad2
-					pad2 = getPadFromTransferObject();
-
-					// НО если в меню '2 PLAYERS' было нажато ВПРАВО перед игрой (switchPlayers == 1), то второй
-					// игрок будет играть за Pac-Man т.к. в конце этой функции pad1 и pad2 будут поменяны в этом случае местами
-				}
-			} while (objectType != 0);
-
+			masterControls();
 		break;
 		case MODE_PORT2_SLAVE:
-			// slave - наша приставка ведомая, игра в двоем через Link cable (сетевая ига на двух приставках SEGA)
-			// играем за второго игрока PAC-GIRL
+			// slave - our console is slave, playing together via Link Cable (network game on two SEGA consoles)
+			// we play as second player PAC-GIRL but if in '2 PLAYERS' menu characters were changed then as PAC-MAN
 
-			// мы играем за второго игрока, Pac-Girl по этому что нажато на первом контролере
-			// сохраняем в переменную 2 го контроллера
-			pad2 = pad1;
-
-			if (pad1) {
-				// в transferObject положим объект содержащий информацию о нажатых кнопках на 1 контроллере нашей приставки
-				// т.е. там будет лежать объект OBJECT_TYPE_JOY в виде байтового массива (если что то было нажато)
-				padToTransferObject(pad1);
-
-				// добавим объект OBJECT_TYPE_JOY в пакет который будет передан другой приставке при вызове LCP_slaveCycle()
-				// в момент получения внешнего прерывания вызванного ведущей приставкой (master) в рандомный  момент времени для нас
-				LCP_objectToPacketForSend(transferObject, OBJECT_TYPE_JOY, LINK_TYPES_LENGHT);
-			}
-
-			// счтаем что на 1 контроллере на данный момент ничего не нажато
-			pad1 = 0;
-
-			do {
-				// пытаемся из полученного пакета данных от ведущей приставки (master) достать очередной объект в transferObject
-				objectType = LCP_getNextObjectFromRecivePacket(transferObject, LINK_TYPES_LENGHT);
-				if (OBJECT_TYPE_JOY == objectType) {
-					// тот кто играет на другой приставке, ведущей (master) - первый игрок по умолчанию играет за Pac-Man
-					// поэтому что было нажато на первом контролере другой приставки сохоаняем в pad1
-					pad1 = getPadFromTransferObject();
-
-					// НО если в меню '2 PLAYERS' было нажато ВПРАВО перед игрой (switchPlayers == 1), то первый
-					// игрок будет играть за Pac-Girl т.к. в конце этой функции pad1 и pad2 будут поменяны в этом случае местами
-				} else if (OBJECT_TYPE_GAME_STATE == objectType) {
-					if (STATE_GAME == gameState || STATE_RESULT == gameState) {
-						// пришло состояние игры, нужно его из transferObject разложить по соответствующим переменным
-						refreshGameStateFromTransferObject();
-					}
-				} else if (OBJECT_TYPE_SWITCH_PLAYERS == objectType) {
-					if (STATE_SELECT == gameState) {
-						// пришла информация о том какой игрок кем играет
-						switchPlayers = transferObject[0];
-					}
-
-				}
-			} while (objectType != 0);
-
+			slaveControls();
 		break;
 		case MODE_SINGLE_PLAYER:
-			// singlepayer - нет соединения через Link cable и в 2 порту нет контроллера
-		  	// основной и единственный игрок тот кто нажимает кнопки на первом контроллере, по этому
-			// ничего не делаем мы и так уже все положили в pad1
+			// singleplayer - no connection via Link Cable and no controller in port 2
+		  	// main and only player is the one pressing buttons on first controller, therefore
+			// we do nothing we already put everything in pad1
 		case MODE_PORT2_UNKNOWN:
-			// не знаем что с вторым контроллером,
-			// ничего не делаем
+			// don't know what with second controller,
+			// do nothing
 		default:
-			// не нужно обрабатывать события от 2го порта контроллера
-			// ничего не делаем
+			// no need to process events from 2nd controller port
+			// do nothing
 		break;
 	}
 
-	// выводим на экран только реальные ошибки произошедшие при передаче
-	// через Link cable
+	// display on screen only real errors that occurred during transmission
+	// via Link Cable
 	lcpError = LCP_getError();
 	if (lcpError != 0 && lcpError != 0x1000) {
 		linkCableErrors = lcpError;
 		linkCableErrorsCount++;
 	}
 
-	if (switchPlayers && players == 2) {
-		// switchPlayers == 1 - первый игрок играет Pac-Girl а не Pac-Man, при игре вдвоем на одной приставке
-	    // если играем через Link cable - master играет за Pac-Girl а не за Pac-Man как изначально
-		// а второй игрок играет за Pac-Man а не за  Pac-Girl, при игре вдвоем на одной приставке
-		// ну и если играем через Link cable - slave играет за Pac-Man а не за  Pac-Girl
-		// для этого просто меняем местами значения у pad1 и pad2
+	if (P1_PACGIRL__P2_PACMAN == switchPlayers && players == 2) {
+		// switchPlayers == P1_PACGIRL__P2_PACMAN - first player plays Pac-Girl not Pac-Man, when playing together on one console
+	    // if playing via Link Cable - master plays as Pac-Girl not as Pac-Man as initially
+		// and second player plays as Pac-Man not as Pac-Girl, when playing together on one console
+		// and if playing via Link Cable - slave plays as Pac-Man not as Pac-Girl
+		// for this simply swap values of pad1 and pad2
 		switchPad = pad1;
 		pad1 = pad2;
 		pad2 = switchPad;
@@ -2467,149 +2817,214 @@ void controls() {
 
 
 /**
- * Определить победил ли ты в игре
+ * Determine if you won the game
  *
- * return true - победил в игре
+ * return true - won the game
  */
 u8 winner() {
 	return food100 == 2 && food010 == 7 && food001 == 1 && powerBonus == 4;
 }
 
 
-// точка входа в программу
-int main() {
-	// голос во время заставки произносящий слово SEGA
+/**
+ * SEGA
+ *
+ * Sound effects initialization
+ */
+void initSound() {
+	// voice during screensaver pronouncing word SEGA
 	XGM_setPCM(SFX_SOUND_SEGA, sega_sfx, sizeof(sega_sfx));
-	// звук поедания белой точки - еды
+	// sound of eating white dot - food
 	XGM_setPCM(SFX_SOUND_EAT, eat_sfx, sizeof(eat_sfx));
-	// звук поедания черешни
+	// sound of eating cherry
 	XGM_setPCM(SFX_SOUND_CHERRY, cherry_sfx, sizeof(cherry_sfx));
-	// звук поедания зеленой точки - powerup
+	// sound of eating green dot - powerup
 	XGM_setPCM(SFX_SOUND_POWERUP, powerup_sfx, sizeof(powerup_sfx));
-	// звук когда призрак съедобен
+	// sound when ghost is edible
 	XGM_setPCM(SFX_SOUND_SHADOW, shadow_sfx, sizeof(shadow_sfx));
-	// звук когда съели призрака
+	// sound when ghost was eaten
 	XGM_setPCM(SFX_SOUND_EAT_SHADOW, eatred_sfx, sizeof(eatred_sfx));
-	// звук создания соединения через Link cable
+	// sound of creating connection via Link Cable
 	XGM_setPCM(SFX_SOUND_CONNECT_LINK_CABLE, connect_sfx, sizeof(connect_sfx));
-	// звук отключения соединения через Link cable
+	// sound of disconnecting connection via Link Cable
 	XGM_setPCM(SFX_SOUND_DISCONNECT_LINK_CABLE, disconnect_sfx, sizeof(disconnect_sfx));
+}
 
-    // инициализируем спрайтовый движок (выделяем место в VRAM под спрайты)
-    SPR_init();
 
-    // задали цвета в 4-ой палитре (отсчет начинается с нуля), цветами взятыми из спрайта соника, 
-    // и выбрали в качестве способа передачи DMA.
-    // Sega поддерживает 4 палитры по 16 цветов (PAL0-PAL3), и хранит их в CRAM.
+/**
+ * SEGA
+ *
+ * Palettes setup
+ */
+void  initPaletts() {
+    // set colors in 4th palette (counting starts from zero), with colors taken from sonic sprite,
+    // and selected DMA as transfer method.
+    // Sega supports 4 palettes of 16 colors each (PAL0-PAL3), and stores them in CRAM.
     PAL_setPalette(PAL3, sonic_sprite.palette->data, DMA);
     PAL_setPalette(PAL2, red_sprite.palette->data, DMA);
     PAL_setPalette(PAL1, pacgirl_sprite.palette->data, DMA);
-
-    // добавляем спрайт соника на экран
-    sonicSprite = SPR_addSprite(&sonic_sprite, sonicX, sonicY, 
-                                    TILE_ATTR(PAL3       // палитра
-                                                , 0      // приоритет спрайта (спрайт с меньшим числом, будет перекрывать спрайт с большим)
-                                                , FALSE  // перевернуть по вертикали
-                                                , FALSE  // перевернуть по горизонтали
-                                              )
-                                );
-
-    // добавляем спрайт Pac-Man на экран
-    pacmanSprite = SPR_addSprite(&pacman_sprite, pacmanX, pacmanY, 
-                                    TILE_ATTR(PAL1       // палитра
-                                                , 1      // приоритет спрайта (спрайт с меньшим числом, будет перекрывать спрайт с большим)
-                                                , FALSE  // перевернуть по вертикали
-                                                , FALSE  // перевернуть по горизонтали
-                                              )
-                                );
-
-    // добавляем спрайт Red на экран
-    redSprite = SPR_addSprite(&red_sprite, redX, redY, 
-                                    TILE_ATTR(PAL2       // палитра
-                                                , 0      // приоритет спрайта (спрайт с меньшим числом, будет перекрывать спрайт с большим)
-                                                , FALSE  // перевернуть по вертикали
-                                                , FALSE  // перевернуть по горизонтали
-                                              )
-                                );
-
-
-    // добавляем спрайт Pac-Girl на экран
-    pacGirlSprite = SPR_addSprite(&pacgirl_sprite, pacGirlX, pacGirlY, 
-                                    TILE_ATTR(PAL1       // палитра
-                                                , 1      // приоритет спрайта (спрайт с меньшим числом, будет перекрывать спрайт с большим)
-                                                , FALSE  // перевернуть по вертикали
-                                                , FALSE  // перевернуть по горизонтали
-                                              )
-                                );
-
-
-    // добавляем спрайт черешни  на экран
-    cherrySprite = SPR_addSprite(&cherry_sprite, cherryX, cherryY,
-                                    TILE_ATTR(PAL1       // палитра
-                                                , 1      // приоритет спрайта (спрайт с меньшим числом, будет перекрывать спрайт с большим)
-                                                , FALSE  // перевернуть по вертикали
-                                                , FALSE  // перевернуть по горизонтали
-                                              )
-                                );
-    // добавляем спрайт двери на экран
-    doorSprite = SPR_addSprite(&door_sprite, doorX, doorY,
-									TILE_ATTR(PAL1       // палитра
-												, 1      // приоритет спрайта (спрайт с меньшим числом, будет перекрывать спрайт с большим)
-												, FALSE  // перевернуть по вертикали
-												, FALSE  // перевернуть по горизонтали
-											  )
-								);
-
-    pauseSprite = SPR_addSprite(&pause_sprite, -100, -100,
-									TILE_ATTR(PAL1       // палитра
-												, 1      // приоритет спрайта (спрайт с меньшим числом, будет перекрывать спрайт с большим)
-												, FALSE  // перевернуть по вертикали
-												, FALSE  // перевернуть по горизонтали
-											  )
-								);
-
-
-    // заставка (надо обязательно в main выставить т.к. есть soft reset у SEGA)
-    gameState = STATE_SCREENSAVER;
-
-    // инициализируем положение персонажей для заставки
-    initScreensaver();
-
-    // рисуем в качестве заднего фона SEGA
-    drawBackground();
-
-	// звук SEGA при старте игры !
-	XGM_startPlayPCM(SFX_SOUND_SEGA, 15, SOUND_PCM_CH2);
-
-    // цикл анимации игры
-    while(1) {
-
-    	// определение нажатых кнопок на контроллерах
-    	// передача данных по Link Cable от ведущей приставки (master)
-    	// ведомой приставке (slave) и рекция на полученные объекты по Link Cable
-    	controls();
-
-		// нарисовать бонусы, очки или результат игры
-		drawText();
-
-		// обработать действия игроков (нажатие кнопок контроллеров)
-		// подвинуть персонажи в зависимости от того что нажато на крате (map)
-		actions();
-
-		// нарисовать спрайты согласно расположению на карте (map)
-		drawSprites();
-
-        // Обновляет и отображает спрайты на экране
-        SPR_update();
-
-        //  делает всю закулисную обработку, нужен когда есть спрайты, музыка, джойстик.
-        SYS_doVBlankProcess();
-
-        // количество отресованных фреймов
-        linkCableFrameCount++;
-    }
-
-    return (0);
 }
 
+
+/**
+ * SEGA
+ *
+ * Sprites initialization
+ *
+ */
+void initSprites() {
+    // add sonic sprite to screen
+    sonicSprite = SPR_addSprite(&sonic_sprite, sonicX, sonicY, 
+                                    TILE_ATTR(PAL3       // palette
+                                                , 0      // sprite priority (sprite with smaller number will overlap sprite with larger number)
+                                                , FALSE  // flip vertically
+                                                , FALSE  // flip horizontally
+                                              )
+                                );
+
+    // add Pac-Man sprite to screen
+    pacmanSprite = SPR_addSprite(&pacman_sprite, pacmanX, pacmanY, 
+                                    TILE_ATTR(PAL1       // palette
+                                                , 1      // sprite priority (sprite with smaller number will overlap sprite with larger number)
+                                                , FALSE  // flip vertically
+                                                , FALSE  // flip horizontally
+                                              )
+                                );
+
+    // add Red sprite to screen
+    redSprite = SPR_addSprite(&red_sprite, redX, redY, 
+                                    TILE_ATTR(PAL2       // palette
+                                                , 0      // sprite priority (sprite with smaller number will overlap sprite with larger number)
+                                                , FALSE  // flip vertically
+                                                , FALSE  // flip horizontally
+                                              )
+                                );
+
+
+    // add Pac-Girl sprite to screen
+    pacGirlSprite = SPR_addSprite(&pacgirl_sprite, pacGirlX, pacGirlY, 
+                                    TILE_ATTR(PAL1       // palette
+                                                , 1      // sprite priority (sprite with smaller number will overlap sprite with larger number)
+                                                , FALSE  // flip vertically
+                                                , FALSE  // flip horizontally
+                                              )
+                                );
+
+
+    // add cherry sprite to screen
+    cherrySprite = SPR_addSprite(&cherry_sprite, cherryX, cherryY,
+                                    TILE_ATTR(PAL1       // palette
+                                                , 1      // sprite priority (sprite with smaller number will overlap sprite with larger number)
+                                                , FALSE  // flip vertically
+                                                , FALSE  // flip horizontally
+                                              )
+                                );
+    // add door sprite to screen
+    doorSprite = SPR_addSprite(&door_sprite, doorX, doorY,
+									TILE_ATTR(PAL1       // palette
+												, 1      // sprite priority (sprite with smaller number will overlap sprite with larger number)
+												, FALSE  // flip vertically
+												, FALSE  // flip horizontally
+											  )
+								);
+    // add pause sprite to screen
+    pauseSprite = SPR_addSprite(&pause_sprite, -100, -100,
+									TILE_ATTR(PAL1       // palette
+												, 1      // sprite priority (sprite with smaller number will overlap sprite with larger number)
+												, FALSE  // flip vertically
+												, FALSE  // flip horizontally
+											  )
+								);
+
+}
+
+
+/**
+ * SEGA
+ *
+ * Initialization and reset variables to default values
+ * here we also need to reset variables after soft reset (pressing RESET button)
+ */
+void initGame() {
+    // initialize sprite engine (allocate space in VRAM for sprites)
+    SPR_init();
+
+    // palettes setup
+    initPaletts();
+
+    // sprites initialization
+    initSprites();
+
+	// sound effects initialization
+	initSound();
+
+
+    if (MODE_PORT2_MASTER == controllerPort2Mode || MODE_PORT2_SLAVE == controllerPort2Mode) {
+    	// if there was soft reset (pressed RESET), variables are not reset, need to also
+    	// reset SEGA Link Cable Protocol variables state
+    	LCP_close();
+    }
+
+    // reset console operation mode with second port for controller
+    controllerPort2Mode = MODE_PORT2_UNKNOWN;
+
+    // don't display anything on screen about game mode
+    memset(gameModeText, 0, GAME_MODE_TEXT_SIZE);
+
+    // by default first player controls Pac-Man, second player Pac-Girl
+    switchPlayers = P1_PACMAN__P2_PACGIRL;
+
+    // by default single player game is selected
+    players = 1;
+
+    // screensaver (must be set in main because SEGA has soft reset)
+    gameState = STATE_SCREENSAVER;
+
+    // initialize character positions for screensaver
+    initScreensaver();
+}
+
+
+// program entry point
+int main() {
+
+	// Initialization and reset variables to default values
+	initGame();
+
+	// Draw SEGA as background
+	drawBackground();
+
+	// SEGA sound at game start
+	XGM_startPlayPCM(SFX_SOUND_SEGA, 15, SOUND_PCM_CH2);
+
+	// game animation loop
+	while (1) {
+
+		// determine pressed buttons on controllers
+		// data transfer via Link Cable from master console
+		// to slave console and reaction to received objects via Link Cable
+		controls();
+
+		// draw bonuses, scores or game result
+		drawText();
+
+		// process player actions (controller button presses)
+		// move characters depending on what is pressed on the map
+		actions();
+
+		// draw sprites according to positions on the map
+		drawSprites();
+
+		// Updates and displays sprites on screen
+		SPR_update();
+
+		// does all background processing, needed when there are sprites, music, joystick
+		SYS_doVBlankProcess();
+
+		// number of rendered frames
+		++linkCableFrameCount;
+	}
+
+	return 0;
+}
 
