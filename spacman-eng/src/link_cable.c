@@ -1,5 +1,5 @@
 /**
- * Link cable Protocol (LCP) - протокол для обмена данными через SEGA Link Cable
+ * Link Cable Protocol (LCP) - протокол для обмена данными через SEGA Link Cable
  * двух приставок Sega Mega Drive / Sega Genesis который втыкается в второй порт приставок
  * для SGDK 1.90 (July 2023)
  *
@@ -11,17 +11,17 @@
  * *************************************************************************************************
  * Порядок вызова функций у ведущей (master) приставки:
  *
- * 1) Инициализируем Link cable Protocol.
+ * 1) Инициализируем Link Cable Protocol.
  * LCP_init();
  *
- * 2) Подготавливаем данные для отправки от ведущей (master) приставки через Link cable Protocol.
+ * 2) Подготавливаем данные для отправки от ведущей (master) приставки через Link Cable Protocol.
  * LCP_objectToPacketForSend(transferObject, objectType, objectTypeSizes);
  * LCP_objectToPacketForSend(transferObject, objectType, objectTypeSizes);
  * ...
  * LCP_objectToPacketForSend(transferObject, objectType, objectTypeSizes);
  *
  * 3) Вызываем внешнее прирывание у ведомой (slave) приставки и посылаем а затем получаем данные.
- *    через Link cable Protocol
+ *    через Link Cable Protocol
  * LCP_masterCycle();
  *
  * 4) Извлекаем полученные объекты из пакета переданного от ведомой (slave) приставки
@@ -31,14 +31,14 @@
  * objectType = LCP_getNextObjectFromRecivePacket(transferObject, objectSizes);
  * пока objectType не станет равным 0
  *
- * 5) Закрываем Link cable Protocol если болье не хотим взаимодействовать с ведомой (slave) приставкой.
+ * 5) Закрываем Link Cable Protocol если болье не хотим взаимодействовать с ведомой (slave) приставкой.
  * LCP_close();
  *
  * *************************************************************************************************
  * *************************************************************************************************
  * Порядок вызова функций у ведомой (slave) приставки:
  *
- * 1) инициализируем Link cable Protocol
+ * 1) инициализируем Link Cable Protocol
  * LCP_init();
  *
  * 2) Открытие порта чтоб ведомая (slave) приставка могла обрабатывать внешние прерывания вызванные
@@ -46,7 +46,7 @@
  *    внешнего прерывания у ведомой (slave) приставки только после вызов этого метода.
  * LCP_open();
  *
- * 3) Подготавливаем данные для отправки от ведомой (slave) приставки через Link cable Protocol.
+ * 3) Подготавливаем данные для отправки от ведомой (slave) приставки через Link Cable Protocol.
  *    Происходить это будет в LCP_slaveCycle() после получения в этом методе данных от ведущей (master)
  *    приставки. Вызывается LCP_slaveCycle() асинхронно путем приостановки выполнения кода игры у ведомой (slave)
  *    приставки при наступлении внешнего прерывания вызываемого из метода LCP_masterCycle() ведущей
@@ -63,7 +63,7 @@
  * objectType = LCP_getNextObjectFromRecivePacket(transferObject, objectSizes);
  * пока objectType не станет равным 0
  *
- * 5) Закрываем Link cable Protocol если болье не хотим взаимодействовать с ведущей (master) приставкой.
+ * 5) Закрываем Link Cable Protocol если болье не хотим взаимодействовать с ведущей (master) приставкой.
  *    ведомая (slave) приставка перестанет реагировать на внешние прерывания от ведущей (master) приставки!
  * LCP_close();
  *
@@ -1152,7 +1152,7 @@ void LCP_masterCycle() {
 	u16 checksum;
 	// текущий индекс передаваемых или получаемых данных
 	u16 head;
-	// передаваемые или полученные 2 байта (16 бит) через Link cable Protocol
+	// передаваемые или полученные 2 байта (16 бит) через Link Cable Protocol
 	u16 data;
 
     // выключаем обработку прерываний

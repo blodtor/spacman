@@ -1951,6 +1951,13 @@ void actionsStateSelectPlayers() {
 
 		if (players != 2) {
 			// выбрана игра за 1го (1 PLAYER)
+
+			// первый игрок всегда в оденочную игру управляет Pac-Man
+			switchPlayers = P1_PACMAN__P2_PACGIRL;
+
+			// сбрасываем все что нажато на 2 контроллере
+			pad2 = 0;
+
 			// выводим на экран что соединения с другой притавкой нет, играем в одного
 			memcpy(gameModeText, TEXT_1P_NO_LINK, GAME_MODE_TEXT_SIZE);
 
@@ -1962,9 +1969,6 @@ void actionsStateSelectPlayers() {
 				// есть соединение по Link cable
 				// закрываем порт, данные больше не будут пересылатся через Link cable
 				LCP_close();
-
-				// сбрасываем все что нажато на 2 контроллере
-				pad2 = 0;
 
 				// защита от двойного нажатия на start
 				playersTime = 30;
